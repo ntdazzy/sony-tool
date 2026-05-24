@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sony Debloat — Xperia 5 II</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="logo-box">📱</div>
+      <div>
+        <h1>Sony Debloat</h1>
+        <p class="subtitle">Xperia 5 II · XQ-AS42 (JP)</p>
+      </div>
+    </div>
+    <div class="status-pill" id="status">
+      <span class="dot offline"></span>
+      <span class="status-text">Đang kiểm tra…</span>
+      <button class="btn-icon" id="btn-refresh" title="Làm mới">↻</button>
+    </div>
+    <button class="btn-icon theme-toggle" id="btn-theme" title="Đổi giao diện sáng/tối">🌙</button>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="overview"><span class="tab-icon">🏠</span> Tổng quan</button>
+    <button class="tab tab-hero" data-tab="cleanup"><span class="tab-icon">🧹</span> Dọn sạch</button>
+    <button class="tab" data-tab="all"><span class="tab-icon">📦</span> Tất cả app</button>
+    <button class="tab" data-tab="optimize"><span class="tab-icon">⚡</span> Tối ưu</button>
+    <button class="tab" data-tab="backup"><span class="tab-icon">💾</span> Backup</button>
+    <button class="tab" data-tab="help"><span class="tab-icon">❓</span> Hướng dẫn</button>
+  </nav>
+
+  <main>
+
+    <!-- =================== TAB: OVERVIEW =================== -->
+    <section class="tab-panel active" id="tab-overview">
+
+      <!-- Stats dashboard -->
+      <div class="stats-grid" id="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">Tổng app</div>
+          <div class="stat-value" id="stat-total">—</div>
+          <div class="stat-hint">trên máy</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Đang chạy</div>
+          <div class="stat-value text-success" id="stat-enabled">—</div>
+          <div class="stat-hint">enabled</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Đã tắt</div>
+          <div class="stat-value text-dim" id="stat-disabled">—</div>
+          <div class="stat-hint">disabled</div>
+        </div>
+        <div class="stat-card highlight">
+          <div class="stat-label">⚠️ Bloat còn chạy</div>
+          <div class="stat-value text-warn" id="stat-bloat">—</div>
+          <div class="stat-hint">tắt được</div>
+        </div>
+      </div>
+
+      <!-- Hero cleanup card -->
+      <div class="hero-card" id="hero-cleanup">
+        <div class="hero-bg"></div>
+        <div class="hero-content">
+          <div class="hero-icon">🧹</div>
+          <div class="hero-text">
+            <h2>Dọn sạch một phát</h2>
+            <p>Tắt toàn bộ app rác / service không cần thiết. Máy nhẹ + mượt ngay lập tức. Mọi thứ <b>khôi phục được</b>.</p>
+          </div>
+          <button class="btn-hero" id="btn-hero-cleanup">Bắt đầu dọn sạch →</button>
+        </div>
+      </div>
+
+      <!-- Device info -->
+      <div class="card">
+        <h2><span class="card-icon">📱</span> Thông tin máy</h2>
+        <div id="device-info" class="device-info">Chưa kết nối máy.</div>
+      </div>
+
+      <!-- Setup -->
+      <div class="card">
+        <h2><span class="card-icon">🔌</span> Bật USB Debugging (làm 1 lần)</h2>
+        <ol class="steps">
+          <li><b>Cài đặt → Giới thiệu điện thoại</b> → chạm <b>Số hiệu bản dựng</b> 7 lần liên tiếp.</li>
+          <li><b>Cài đặt → Hệ thống → Tuỳ chọn nhà phát triển</b> → bật <b>Gỡ lỗi USB</b>.</li>
+          <li>Cắm cáp USB <b>data</b> (không phải cáp chỉ sạc) vào Mac. Máy hiện popup → <b>Cho phép</b>.</li>
+          <li>Bấm <b>↻</b> ở góc trên phải. Thấy tên máy là OK.</li>
+        </ol>
+        <div class="warn">
+          ⚠️ <b>Bootloader của XQ-AS42 không thể unlock</b> — Sony khoá theo thị trường Nhật, không có exploit công khai cho Snapdragon 865. Tool này chỉ qua ADB, không cần root, an toàn 100%.
+        </div>
+      </div>
+
+    </section>
+
+    <!-- =================== TAB: AGGRESSIVE CLEANUP =================== -->
+    <section class="tab-panel" id="tab-cleanup">
+
+      <!-- 1-click hero -->
+      <div class="card card-1click">
+        <div class="oneclick-content">
+          <div class="oneclick-icon">🚀</div>
+          <div class="oneclick-text">
+            <h2>Tinh giản 1-click</h2>
+            <p>Backup → tắt <b>toàn bộ bloat</b> ở mức Tối đa → áp dụng các tối ưu khách quan (animation, RAM, Wi-Fi scan, telemetry…). Máy sẽ <b>như mới ra hộp</b>, chỉ còn essentials.</p>
+            <div class="oneclick-stats" id="oneclick-stats">
+              <span class="oc-chip">🧹 <b id="oc-bloat-count">—</b> app rác sẽ xử lý</span>
+              <span class="oc-chip">⚡ <b id="oc-preset-count">—</b> tối ưu áp dụng</span>
+              <span class="oc-chip">💾 Backup tự động</span>
+            </div>
+            <div class="oneclick-mode">
+              <label class="seg-btn">
+                <input type="radio" name="oc-mode" value="disable">
+                <span>Tắt</span>
+                <small>An toàn — bật lại 1 click</small>
+              </label>
+              <label class="seg-btn">
+                <input type="radio" name="oc-mode" value="uninstall" checked>
+                <span>🗑️ Gỡ hẳn</span>
+                <small>Sạch hơn — app data xoá, APK vẫn còn để khôi phục</small>
+              </label>
+            </div>
+          </div>
+          <button class="btn-1click" id="btn-one-click">🚀 Bắt đầu — máy sạch trong 1 phút</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><span class="card-icon">🎚️</span> Hoặc chọn thủ công theo mức</h2>
+        <p class="muted">Tool gom toàn bộ bloat đã biết về XQ-AS42 JP rồi chọn theo mức độ. Càng "mạnh" càng nhiều app tắt, nhưng có thể mất vài tính năng phụ.</p>
+
+        <div class="tier-selector">
+          <label class="tier-card">
+            <input type="radio" name="tier" value="safe" checked>
+            <div class="tier-card-body">
+              <div class="tier-name"><span class="tier-dot safe"></span> Nhẹ — chỉ "Safe"</div>
+              <p>Facebook bloat, partner apps, JP-only, ad services. Không ảnh hưởng tính năng gì hết.</p>
+              <span class="tier-count" data-tier="safe">— app</span>
+            </div>
+          </label>
+          <label class="tier-card">
+            <input type="radio" name="tier" value="recommended">
+            <div class="tier-card-body">
+              <div class="tier-name"><span class="tier-dot recommended"></span> Vừa — Safe + Recommended <span class="badge-best">Đề xuất</span></div>
+              <p>Thêm: Sony Music/Album/Email/Calendar (bạn đã có Google), Lifelog, service ngầm.</p>
+              <span class="tier-count" data-tier="recommended">— app</span>
+            </div>
+          </label>
+          <label class="tier-card">
+            <input type="radio" name="tier" value="aggressive">
+            <div class="tier-card-body">
+              <div class="tier-name"><span class="tier-dot aggressive"></span> Mạnh — thêm cả "Aggressive"</div>
+              <p>Thêm: Sony policy/service menu, FOTA scheduler, call log backup, SMS push. Cho máy phụ, không quan trọng cập nhật OTA.</p>
+              <span class="tier-count" data-tier="aggressive">— app</span>
+            </div>
+          </label>
+          <label class="tier-card">
+            <input type="radio" name="tier" value="nuclear">
+            <div class="tier-card-body">
+              <div class="tier-name"><span class="tier-dot nuclear"></span> ☢️ Tối đa — tất cả trên + Google không cần</div>
+              <p>Thêm: tất cả app Google bạn không dùng (Drive/Maps/YouTube...). Đánh dấu thủ công cái muốn giữ ở bước tiếp theo.</p>
+              <span class="tier-count" data-tier="nuclear">— app</span>
+            </div>
+          </label>
+        </div>
+
+        <div class="preview-box" id="cleanup-preview">
+          <div class="preview-header">
+            <span>Xem trước: <b id="cleanup-count">0</b> app sẽ tắt</span>
+            <button class="btn-secondary btn-sm" id="btn-toggle-preview">Xem danh sách ▾</button>
+          </div>
+          <div class="preview-list" id="cleanup-list" hidden></div>
+        </div>
+
+        <div class="action-bar">
+          <span class="muted" id="cleanup-warning"></span>
+          <button class="btn-primary btn-lg" id="btn-do-cleanup" disabled>🧹 Tắt tất cả đã chọn</button>
+        </div>
+      </div>
+
+      <div class="card card-tip">
+        <h3>💡 Mẹo dùng</h3>
+        <ul class="tip-list">
+          <li>Lần đầu: chọn <b>Nhẹ</b> hoặc <b>Vừa</b>, bấm Tắt, dùng máy 1 ngày để xem có thiếu gì không.</li>
+          <li>Nếu OK: quay lại đây chọn mức cao hơn.</li>
+          <li>Lỡ tắt nhầm: vào <b>Tất cả app</b> → lọc "Đã tắt" → bật lại.</li>
+          <li>Sau khi dọn xong: vào <b>Tối ưu</b> áp dụng "Tắt animation" + "Giới hạn 3 process".</li>
+        </ul>
+      </div>
+
+    </section>
+
+    <!-- =================== TAB: ALL PACKAGES =================== -->
+    <section class="tab-panel" id="tab-all">
+      <div class="card">
+        <h2><span class="card-icon">📦</span> Tất cả app trên máy</h2>
+        <div class="filter-row">
+          <input type="text" id="search-input" placeholder="🔍 Tìm theo tên (facebook, sony, news…)">
+          <select id="filter-select">
+            <option value="all">Tất cả</option>
+            <option value="user">App tải về</option>
+            <option value="system">App hệ thống</option>
+            <option value="disabled">Đã tắt</option>
+            <option value="enabled">Đang bật</option>
+            <option value="bloat">Có trong list bloat</option>
+            <option value="critical">App cốt lõi (protected)</option>
+          </select>
+          <button class="btn-secondary btn-sm" id="btn-reload-all">↻ Tải lại</button>
+        </div>
+        <div class="table-wrap">
+          <table id="packages-table">
+            <thead>
+              <tr>
+                <th><input type="checkbox" id="check-all"></th>
+                <th>App</th>
+                <th>Loại</th>
+                <th>Trạng thái</th>
+                <th>Hành động</th>
+              </tr>
+            </thead>
+            <tbody><tr><td colspan="5" class="muted center">Cắm máy + bấm "Tải lại" để xem.</td></tr></tbody>
+          </table>
+        </div>
+        <div class="action-bar">
+          <span id="all-selection-count" class="muted">Đã chọn: 0</span>
+          <button class="btn-danger" id="btn-bulk-disable">🚫 Tắt đã chọn</button>
+          <button class="btn-secondary" id="btn-bulk-enable">✅ Bật đã chọn</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- =================== TAB: OPTIMIZE =================== -->
+    <section class="tab-panel" id="tab-optimize">
+      <div class="card">
+        <h2><span class="card-icon">⚡</span> Tinh chỉnh hiệu năng & pin</h2>
+        <p class="muted">Tất cả tinh chỉnh đảo ngược được 100% bằng nút "Khôi phục".</p>
+        <div id="presets-list">Đang tải…</div>
+      </div>
+    </section>
+
+    <!-- =================== TAB: BACKUP =================== -->
+    <section class="tab-panel" id="tab-backup">
+      <div class="card">
+        <h2><span class="card-icon">💾</span> Lưu trạng thái hiện tại</h2>
+        <p class="muted">Backup = danh sách app + trạng thái enabled/disabled. Trước khi dọn rác, bấm để có "bản sao lưu".</p>
+        <button class="btn-primary" id="btn-create-backup">💾 Tạo backup mới</button>
+        <div id="backup-status"></div>
+      </div>
+
+      <div class="card">
+        <h2><span class="card-icon">📤</span> Xuất chi tiết để gửi dev</h2>
+        <p class="muted">Tạo dump đầy đủ: <b>tất cả package, services, getprop</b>. File JSON ~200-500KB, gửi qua chat để dev cập nhật bloat list cho máy bạn chính xác hơn.</p>
+        <button class="btn-secondary" id="btn-export-full">📤 Xuất file chi tiết</button>
+        <div id="export-status"></div>
+      </div>
+      <div class="card">
+        <h2><span class="card-icon">📁</span> Backup đã tạo</h2>
+        <div id="backup-list">Đang tải…</div>
+      </div>
+    </section>
+
+    <!-- =================== TAB: HELP =================== -->
+    <section class="tab-panel" id="tab-help">
+      <div class="card">
+        <h2><span class="card-icon">❓</span> Hỏi đáp nhanh</h2>
+
+        <details open>
+          <summary>Web vs App native — khác nhau không?</summary>
+          <p>Không khác chút nào về khả năng. Mọi việc đều phải đi qua <b>ADB</b> (cầu nối Mac ↔ máy). Tool web này thực chất là 1 trang web local gọi ADB qua Python — kết quả y hệt như app native.</p>
+          <p>App native trên điện thoại <b>không làm được</b> debloat — Android cấm app thường gỡ system app.</p>
+        </details>
+
+        <details>
+          <summary>"Tắt" và "Gỡ" khác nhau thế nào?</summary>
+          <p><b>Tắt (disable)</b>: app vẫn còn trên máy, ẩn icon, không chạy ngầm. Bật lại 1-click. → <b>Khuyến nghị dùng cái này.</b></p>
+          <p><b>Gỡ cho user 0 (uninstall)</b>: gỡ cho user hiện tại, file APK vẫn trong system. Khôi phục bằng <code>pm install-existing</code>. Sạch hơn nhưng factory reset thì app quay lại.</p>
+        </details>
+
+        <details>
+          <summary>Tôi tắt nhầm app, máy lỗi?</summary>
+          <p>Tool đã chặn 60+ package cốt lõi không cho tắt. Nếu máy lạ:</p>
+          <ol>
+            <li>Vào tab <b>Tất cả app</b>, lọc <b>Đã tắt</b>.</li>
+            <li>Tìm app vừa tắt, bấm <b>Bật</b>.</li>
+            <li>Nếu không nhớ tắt cái nào: tick tất cả → <b>Bật đã chọn</b> để khôi phục về trạng thái gốc.</li>
+            <li>Cuối cùng: <b>Cài đặt → Hệ thống → Đặt lại → Đặt lại thiết bị</b> (mất data).</li>
+          </ol>
+        </details>
+
+        <details>
+          <summary>Đổi font hệ thống được không?</summary>
+          <p><b>KHÔNG</b>, nếu không có root. Sony khoá custom font ở firmware level. Cách workaround:</p>
+          <ul>
+            <li><b>Đổi font tên app</b>: cài Nova Launcher, Niagara Launcher, Lawnchair.</li>
+            <li><b>Đổi cỡ chữ toàn máy</b>: Cài đặt → Hiển thị → Cỡ chữ.</li>
+            <li><b>Đổi font trong app</b>: nhiều app (Word, Notion, Kindle) cho phép đổi font riêng.</li>
+          </ul>
+        </details>
+
+        <details>
+          <summary>Tại sao không bẻ được bootloader?</summary>
+          <p>XQ-AS42 là bản nội địa Nhật. Sony chính sách: <b>không cấp mã unlock cho thị trường Nhật</b>. Snapdragon 865 có secure boot — <b>không có exploit công khai</b> nào bẻ được ở Android 10+. Ai bán "dịch vụ unlock" cho dòng này → 99% là lừa, gạch máy.</p>
+        </details>
+
+        <details>
+          <summary>Sau khi tắt 1 đống app, nên làm gì?</summary>
+          <ol>
+            <li>Vào tab <b>Tối ưu</b> → áp dụng "Tắt animation" + "Tắt Wi-Fi scan liên tục" + "Tắt AOD".</li>
+            <li><b>Khởi động lại máy</b>.</li>
+            <li>Dùng máy 1-2 ngày bình thường.</li>
+            <li>Nếu thiếu chức năng → bật lại app đó.</li>
+            <li>OK rồi → quay lại tab <b>Dọn sạch</b>, chọn mức cao hơn.</li>
+          </ol>
+        </details>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Toast container -->
+  <div id="toast"></div>
+
+  <!-- Modal -->
+  <div class="modal-backdrop" id="modal-backdrop" hidden>
+    <div class="modal">
+      <h3 id="modal-title">Xác nhận</h3>
+      <div id="modal-body"></div>
+      <div class="modal-actions">
+        <button class="btn-secondary" id="modal-cancel">Huỷ</button>
+        <button class="btn-danger" id="modal-confirm">Xác nhận</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading overlay -->
+  <div class="loading-overlay" id="loading-overlay" hidden>
+    <div class="loading-box">
+      <div class="spinner"></div>
+      <div class="loading-text" id="loading-text">Đang xử lý…</div>
+      <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.py[cod]
+
+backups/
+platform-tools/
+
+.DS_Store
+*.log
+sony-export-*.txt

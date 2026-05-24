@@ -1,0 +1,812 @@
+// Sony Debloat Tool — frontend (vanilla JS)
+
+const API = "";
+
+const STATE = {
+  serial: null,
+  packages: [],
+  packagesByName: new Map(),
+  stats: null,
+  bloatData: null,
+  selectedAll: new Set(),
+  selectedTier: "safe",
+};
+
+const TIER_ORDER = { safe: 1, recommended: 2, aggressive: 3, optional: 4 };
+const TIER_LABEL = {
+  safe: "Safe",
+  recommended: "Recommended",
+  aggressive: "Aggressive",
+  optional: "Optional",
+};
+
+// Preset áp dụng tự động ở 1-click. Chọn các cái khách quan tốt cho mọi user,
+// bỏ qua các cái tuỳ sở thích (font, dark mode, auto-rotate, screen timeout...)
+const ONE_CLICK_PRESETS = [
+  "animations_off",
+  "background_limit_3",
+  "cached_processes_limit",
+  "disable_wifi_scan_always",
+  "wifi_avail_notif_off",
+  "disable_telemetry",
+  "disable_google_backup",
+  "limit_ad_tracking",
+  "network_suggestions_off",
+  "always_on_display_off",
+  "live_caption_off",
+];
+
+// ---------- theme ----------
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  const btn = document.querySelector("#btn-theme");
+  if (btn) btn.textContent = theme === "light" ? "🌙" : "☀️";
+  try { localStorage.setItem("sony-tool-theme", theme); } catch (_) {}
+}
+
+(function initTheme() {
+  let saved = "light";
+  try { saved = localStorage.getItem("sony-tool-theme") || "light"; } catch (_) {}
+  applyTheme(saved);
+})();
+
+document.addEventListener("DOMContentLoaded", () => {
+  const btn = document.querySelector("#btn-theme");
+  if (!btn) return;
+  btn.textContent = document.documentElement.getAttribute("data-theme") === "light" ? "🌙" : "☀️";
+  btn.addEventListener("click", () => {
+    const cur = document.documentElement.getAttribute("data-theme");
+    applyTheme(cur === "light" ? "dark" : "light");
+  });
+});
+
+// ---------- helpers ----------
+
+const $ = sel => document.querySelector(sel);
+const $$ = sel => Array.from(document.querySelectorAll(sel));
+
+function toast(msg, type = "info") {
+  const el = document.createElement("div");
+  el.className = `toast-item ${type}`;
+  el.textContent = msg;
+  $("#toast").appendChild(el);
+  setTimeout(() => el.remove(), 4500);
+}
+
+async function api(path, opts = {}) {
+  const res = await fetch(API + path, {
+    headers: { "Content-Type": "application/json" },
+    ...opts,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+  return data;
+}
+
+function openModal({ title, body, confirmText = "Xác nhận", confirmClass = "btn-danger", onConfirm }) {
+  $("#modal-title").textContent = title;
+  $("#modal-body").innerHTML = body;
+  const confirmBtn = $("#modal-confirm");
+  confirmBtn.textContent = confirmText;
+  confirmBtn.className = confirmClass;
+  $("#modal-backdrop").hidden = false;
+
+  const close = () => {
+    $("#modal-backdrop").hidden = true;
+    confirmBtn.replaceWith(confirmBtn.cloneNode(true));
+  };
+
+  const newBtn = confirmBtn.cloneNode(true);
+  confirmBtn.replaceWith(newBtn);
+  newBtn.addEventListener("click", async () => {
+    close();
+    if (onConfirm) await onConfirm();
+  });
+  $("#modal-cancel").onclick = close;
+  $("#modal-backdrop").onclick = e => { if (e.target.id === "modal-backdrop") close(); };
+}
+
+function showLoading(text = "Đang xử lý…") {
+  $("#loading-text").textContent = text;
+  $("#progress-fill").style.width = "0%";
+  $("#loading-overlay").hidden = false;
+}
+function updateProgress(done, total, text) {
+  $("#progress-fill").style.width = `${(done / total) * 100}%`;
+  if (text) $("#loading-text").textContent = text;
+}
+function hideLoading() { $("#loading-overlay").hidden = true; }
+
+// ---------- tabs ----------
+
+$$(".tab").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const id = btn.dataset.tab;
+    $$(".tab").forEach(b => b.classList.toggle("active", b === btn));
+    $$(".tab-panel").forEach(p => p.classList.toggle("active", p.id === `tab-${id}`));
+    if (id === "all" && STATE.packages.length === 0) loadPackages();
+    if (id === "backup") loadBackups();
+    if (id === "cleanup") refreshCleanupPreview();
+  });
+});
+
+// ---------- status ----------
+
+async function refreshStatus() {
+  $("#status .status-text").textContent = "Đang kiểm tra…";
+  $("#status .dot").className = "dot offline";
+
+  try {
+    const data = await api("/api/status");
+
+    if (!data.adb_installed) {
+      $("#status .status-text").textContent = "Chưa cài ADB";
+      $("#device-info").innerHTML = `
+        <p style="color: var(--danger)">⚠️ ADB chưa được cài.</p>
+        <p>Mở Terminal, chạy:</p>
+        <pre style="background:var(--bg-2);padding:10px;border-radius:6px"><code>cd ~/Desktop/sony-tool &amp;&amp; ./setup_adb.sh</code></pre>
+      `;
+      return;
+    }
+
+    if (data.multiple_devices) {
+      $("#status .status-text").textContent = "Nhiều máy đang cắm";
+      $("#status .dot").className = "dot warn";
+      $("#device-info").innerHTML = `<p class="warn">Phát hiện nhiều thiết bị. Vui lòng chỉ cắm 1 máy Sony.</p>`;
+      return;
+    }
+
+    if (!data.active_serial) {
+      $("#status .status-text").textContent = "Chưa cắm máy";
+      const devList = data.devices.length
+        ? data.devices.map(d => `<li><code>${d.serial}</code> — ${d.state}${d.state==="unauthorized" ? " (mở popup trên máy để cho phép)" : ""}</li>`).join("")
+        : "<li>Không thấy máy nào.</li>";
+      $("#device-info").innerHTML = `<ul style="padding-left:20px">${devList}</ul><p class="muted">Đảm bảo cáp USB là <b>data cable</b> và đã bật USB Debugging.</p>`;
+      return;
+    }
+
+    STATE.serial = data.active_serial;
+    $("#status .dot").className = "dot online";
+    $("#status .status-text").textContent = `${data.device_info?.model || data.active_serial}`;
+
+    const info = data.device_info || {};
+    $("#device-info").innerHTML = `
+      <table>
+        <tr><td>Hãng / Model</td><td><b>${info.manufacturer || "-"} ${info.model || "-"}</b></td></tr>
+        <tr><td>Mã thiết bị</td><td><code>${info.device || "-"}</code></td></tr>
+        <tr><td>Android</td><td>${info.android_version || "-"} (SDK ${info.sdk || "-"})</td></tr>
+        <tr><td>Build</td><td><code>${info.build || "-"}</code></td></tr>
+        <tr><td>Serial</td><td><code>${data.active_serial}</code></td></tr>
+      </table>
+    `;
+  } catch (e) {
+    $("#status .status-text").textContent = "Lỗi: " + e.message;
+    $("#device-info").innerHTML = `<p style="color: var(--danger)">${e.message}</p>`;
+  }
+}
+
+$("#btn-refresh").addEventListener("click", async () => {
+  await refreshStatus();
+  if (STATE.serial) {
+    await loadPackages();
+  }
+});
+
+// ---------- stats ----------
+
+function renderStats() {
+  if (!STATE.stats) {
+    ["total","enabled","disabled","bloat"].forEach(k => $(`#stat-${k}`).textContent = "—");
+    return;
+  }
+  $("#stat-total").textContent = STATE.stats.total;
+  $("#stat-enabled").textContent = STATE.stats.enabled;
+  $("#stat-disabled").textContent = STATE.stats.disabled;
+  $("#stat-bloat").textContent = STATE.stats.bloat_active;
+}
+
+// ---------- packages ----------
+
+async function loadPackages() {
+  if (!STATE.serial) {
+    toast("Chưa kết nối máy", "warn");
+    return;
+  }
+  showLoading("Đang đọc danh sách app từ máy…");
+  try {
+    const data = await api(`/api/packages?serial=${encodeURIComponent(STATE.serial)}`);
+    STATE.packages = data.packages;
+    STATE.stats = data.stats;
+    STATE.packagesByName = new Map(data.packages.map(p => [p.name, p]));
+    renderStats();
+    renderPackagesTable();
+    refreshCleanupPreview();
+  } catch (e) {
+    toast("Lỗi tải app: " + e.message, "error");
+  } finally {
+    hideLoading();
+  }
+}
+
+function renderPackagesTable() {
+  const search = $("#search-input").value.toLowerCase().trim();
+  const filter = $("#filter-select").value;
+
+  let list = STATE.packages;
+  if (search) list = list.filter(p => p.name.toLowerCase().includes(search) || (p.label || "").toLowerCase().includes(search));
+  if (filter === "user") list = list.filter(p => !p.is_system);
+  else if (filter === "system") list = list.filter(p => p.is_system);
+  else if (filter === "disabled") list = list.filter(p => !p.enabled);
+  else if (filter === "enabled") list = list.filter(p => p.enabled);
+  else if (filter === "bloat") list = list.filter(p => p.bloat_category);
+  else if (filter === "critical") list = list.filter(p => p.is_critical);
+
+  const tbody = $("#packages-table tbody");
+  if (list.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" class="muted center">Không có app nào khớp.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = list.map(p => `
+    <tr class="${p.is_critical ? "row-critical" : ""}">
+      <td>
+        <input type="checkbox" class="row-check"
+               data-name="${p.name}"
+               ${p.is_critical ? "disabled title='App cốt lõi — không cho tắt'" : ""}
+               ${STATE.selectedAll.has(p.name) ? "checked" : ""}>
+      </td>
+      <td>
+        ${p.label ? `<b>${p.label}</b><br>` : ""}
+        <code>${p.name}</code>
+      </td>
+      <td>${p.is_system ? "Hệ thống" : "Tải về"}</td>
+      <td>
+        <span class="pkg-tag ${p.enabled ? "enabled" : "disabled"}">${p.enabled ? "Đang bật" : "Đã tắt"}</span>
+        ${p.is_critical ? '<span class="pkg-tag critical">Cốt lõi</span>' : ""}
+        ${p.bloat_tier ? `<span class="pkg-tag tier-${p.bloat_tier}">${TIER_LABEL[p.bloat_tier] || p.bloat_tier}</span>` : ""}
+      </td>
+      <td>
+        ${p.enabled
+          ? `<button class="btn-sm btn-danger" data-act="disable" data-name="${p.name}" ${p.is_critical ? "disabled" : ""}>Tắt</button>`
+          : `<button class="btn-sm btn-secondary" data-act="enable" data-name="${p.name}">Bật</button>`}
+      </td>
+    </tr>
+  `).join("");
+
+  tbody.querySelectorAll(".row-check").forEach(cb => {
+    cb.addEventListener("change", e => {
+      const n = e.target.dataset.name;
+      if (e.target.checked) STATE.selectedAll.add(n); else STATE.selectedAll.delete(n);
+      $("#all-selection-count").textContent = `Đã chọn: ${STATE.selectedAll.size}`;
+    });
+  });
+
+  tbody.querySelectorAll("button[data-act]").forEach(btn => {
+    btn.addEventListener("click", () => doSingleAction(btn.dataset.act, btn.dataset.name));
+  });
+}
+
+$("#search-input").addEventListener("input", () => renderPackagesTable());
+$("#filter-select").addEventListener("change", () => renderPackagesTable());
+$("#btn-reload-all").addEventListener("click", () => loadPackages());
+
+$("#check-all").addEventListener("change", e => {
+  $$("#packages-table tbody .row-check:not(:disabled)").forEach(cb => {
+    cb.checked = e.target.checked;
+    const n = cb.dataset.name;
+    if (e.target.checked) STATE.selectedAll.add(n); else STATE.selectedAll.delete(n);
+  });
+  $("#all-selection-count").textContent = `Đã chọn: ${STATE.selectedAll.size}`;
+});
+
+async function doSingleAction(action, pkg) {
+  const endpoint = action === "disable" ? "/api/packages/disable" : "/api/packages/enable";
+  try {
+    const data = await api(endpoint, {
+      method: "POST",
+      body: JSON.stringify({ packages: [pkg], serial: STATE.serial }),
+    });
+    const r = data.results[0];
+    if (r.ok) {
+      toast(`${action === "disable" ? "Tắt" : "Bật"} ${pkg}: OK`, "success");
+      const p = STATE.packagesByName.get(pkg);
+      if (p) p.enabled = action === "enable";
+      renderPackagesTable();
+      renderStats();
+      refreshCleanupPreview();
+    } else {
+      toast(`Lỗi: ${r.message}`, "error");
+    }
+  } catch (e) {
+    toast("Lỗi: " + e.message, "error");
+  }
+}
+
+async function bulkDisable(packages, label = "app") {
+  if (packages.length === 0) {
+    toast("Chưa chọn app nào", "warn");
+    return;
+  }
+
+  showLoading(`Đang tắt ${packages.length} ${label}…`);
+  let done = 0;
+  let ok = 0;
+  let fail = 0;
+  const failures = [];
+
+  // Tắt theo batch 10 cho responsive UI
+  const batchSize = 10;
+  for (let i = 0; i < packages.length; i += batchSize) {
+    const batch = packages.slice(i, i + batchSize);
+    try {
+      const data = await api("/api/packages/disable", {
+        method: "POST",
+        body: JSON.stringify({ packages: batch, serial: STATE.serial }),
+      });
+      data.results.forEach(r => {
+        if (r.ok) ok++;
+        else { fail++; failures.push(`${r.package}: ${r.message}`); }
+      });
+    } catch (e) {
+      fail += batch.length;
+      failures.push(`Batch lỗi: ${e.message}`);
+    }
+    done += batch.length;
+    updateProgress(done, packages.length, `Đang tắt… ${done}/${packages.length}`);
+  }
+
+  hideLoading();
+  toast(`Hoàn tất: ${ok} tắt, ${fail} lỗi`, fail === 0 ? "success" : "warn");
+  if (failures.length) console.warn("Failures:\n" + failures.join("\n"));
+  await loadPackages();
+}
+
+async function bulkEnable(packages) {
+  if (packages.length === 0) {
+    toast("Chưa chọn app nào", "warn");
+    return;
+  }
+  showLoading(`Đang bật ${packages.length} app…`);
+  try {
+    const data = await api("/api/packages/enable", {
+      method: "POST",
+      body: JSON.stringify({ packages, serial: STATE.serial }),
+    });
+    const ok = data.results.filter(r => r.ok).length;
+    toast(`Bật xong: ${ok}/${packages.length}`, "success");
+  } catch (e) {
+    toast("Lỗi: " + e.message, "error");
+  } finally {
+    hideLoading();
+    await loadPackages();
+  }
+}
+
+$("#btn-bulk-disable").addEventListener("click", () => {
+  const pkgs = [...STATE.selectedAll];
+  openModal({
+    title: "Xác nhận tắt",
+    body: `Bạn sẽ tắt <b>${pkgs.length}</b> app. App vẫn còn trong máy, có thể bật lại bất cứ lúc nào. Tiếp tục?`,
+    confirmText: "Tắt",
+    onConfirm: async () => {
+      await bulkDisable(pkgs);
+      STATE.selectedAll.clear();
+    },
+  });
+});
+
+$("#btn-bulk-enable").addEventListener("click", async () => {
+  await bulkEnable([...STATE.selectedAll]);
+  STATE.selectedAll.clear();
+});
+
+// ---------- bloat data & cleanup ----------
+
+async function loadBloatData() {
+  if (STATE.bloatData) return STATE.bloatData;
+  STATE.bloatData = await api("/api/bloat-list");
+  return STATE.bloatData;
+}
+
+function tierIncludedIn(packageTier, selectedTier) {
+  // selectedTier: safe | recommended | aggressive | nuclear
+  if (selectedTier === "safe") return packageTier === "safe";
+  if (selectedTier === "recommended") return ["safe", "recommended"].includes(packageTier);
+  if (selectedTier === "aggressive") return ["safe", "recommended", "aggressive"].includes(packageTier);
+  if (selectedTier === "nuclear") return ["safe", "recommended", "aggressive", "optional"].includes(packageTier);
+  return false;
+}
+
+async function refreshCleanupPreview() {
+  const data = await loadBloatData();
+  const selected = STATE.selectedTier;
+
+  // Đếm cho từng tier card
+  for (const tier of ["safe", "recommended", "aggressive", "nuclear"]) {
+    let count = 0;
+    for (const cat of data.categories) {
+      for (const pkg of cat.packages) {
+        if (!tierIncludedIn(pkg.tier, tier)) continue;
+        const p = STATE.packagesByName.get(pkg.id);
+        if (p && p.enabled) count++;
+      }
+    }
+    const el = document.querySelector(`.tier-count[data-tier="${tier}"]`);
+    if (el) el.textContent = `${count} app sẽ tắt`;
+  }
+
+  // Render preview list cho tier hiện tại
+  const grouped = [];
+  let totalCount = 0;
+  for (const cat of data.categories) {
+    const pkgsInCat = [];
+    for (const pkg of cat.packages) {
+      if (!tierIncludedIn(pkg.tier, selected)) continue;
+      const p = STATE.packagesByName.get(pkg.id);
+      if (!p || !p.enabled) continue;
+      pkgsInCat.push(pkg);
+      totalCount++;
+    }
+    if (pkgsInCat.length) grouped.push({ cat, pkgs: pkgsInCat });
+  }
+
+  $("#cleanup-count").textContent = totalCount;
+  $("#btn-do-cleanup").disabled = totalCount === 0;
+
+  let warning = "";
+  if (totalCount === 0 && STATE.packages.length === 0) {
+    warning = "⚠️ Chưa kết nối máy — bấm ↻ ở góc trên phải.";
+  } else if (totalCount === 0) {
+    warning = "✨ Không còn bloat ở mức này — máy đã sạch!";
+  } else if (selected === "nuclear") {
+    warning = "☢️ Mức tối đa — kiểm tra danh sách kỹ trước khi tắt.";
+  } else if (selected === "aggressive") {
+    warning = "⚠️ Mức mạnh — sẽ tắt cả service hệ thống phụ.";
+  }
+  $("#cleanup-warning").textContent = warning;
+
+  // Cập nhật 1-click stats
+  let nuclearCount = 0;
+  for (const cat of data.categories) {
+    for (const pkg of cat.packages) {
+      if (!tierIncludedIn(pkg.tier, "nuclear")) continue;
+      const p = STATE.packagesByName.get(pkg.id);
+      if (p && p.enabled) nuclearCount++;
+    }
+  }
+  const ocBloat = $("#oc-bloat-count");
+  const ocPreset = $("#oc-preset-count");
+  if (ocBloat) ocBloat.textContent = nuclearCount;
+  if (ocPreset) ocPreset.textContent = ONE_CLICK_PRESETS.length;
+  const oneClickBtn = $("#btn-one-click");
+  if (oneClickBtn) oneClickBtn.disabled = !STATE.serial;
+
+  const listEl = $("#cleanup-list");
+  listEl.innerHTML = grouped.map(g => `
+    <div class="preview-group">
+      <div class="preview-group-title">${g.cat.icon || ""} ${g.cat.title} (${g.pkgs.length})</div>
+      ${g.pkgs.map(p => `<div class="preview-pkg">${p.label} <code style="font-size:10px;color:var(--text-mute)">${p.id}</code></div>`).join("")}
+    </div>
+  `).join("");
+}
+
+document.querySelectorAll('input[name="tier"]').forEach(radio => {
+  radio.addEventListener("change", e => {
+    STATE.selectedTier = e.target.value;
+    refreshCleanupPreview();
+  });
+});
+
+$("#btn-toggle-preview").addEventListener("click", () => {
+  const list = $("#cleanup-list");
+  list.hidden = !list.hidden;
+  $("#btn-toggle-preview").textContent = list.hidden ? "Xem danh sách ▾" : "Ẩn danh sách ▴";
+});
+
+$("#btn-do-cleanup").addEventListener("click", async () => {
+  if (!STATE.serial) {
+    toast("Chưa kết nối máy", "warn");
+    return;
+  }
+  const data = await loadBloatData();
+  const toDisable = [];
+  for (const cat of data.categories) {
+    for (const pkg of cat.packages) {
+      if (!tierIncludedIn(pkg.tier, STATE.selectedTier)) continue;
+      const p = STATE.packagesByName.get(pkg.id);
+      if (p && p.enabled) toDisable.push(pkg.id);
+    }
+  }
+
+  if (toDisable.length === 0) {
+    toast("Không có gì để tắt", "warn");
+    return;
+  }
+
+  openModal({
+    title: `Dọn sạch — tắt ${toDisable.length} app?`,
+    body: `
+      <p>Tool sẽ tắt <b>${toDisable.length} app</b> ở mức "<b>${$("input[name='tier']:checked").nextElementSibling.querySelector(".tier-name").textContent.trim()}</b>".</p>
+      <p>Mọi thao tác <b>khôi phục được</b>. Sau khi tắt nên:</p>
+      <ol>
+        <li>Khởi động lại máy</li>
+        <li>Dùng 1-2 ngày để kiểm tra</li>
+        <li>Nếu thiếu chức năng → vào "Tất cả app" → lọc "Đã tắt" → bật lại</li>
+      </ol>
+    `,
+    confirmText: "🧹 Bắt đầu tắt",
+    confirmClass: "btn-primary",
+    onConfirm: () => bulkDisable(toDisable, "app rác"),
+  });
+});
+
+$("#btn-hero-cleanup").addEventListener("click", () => {
+  $$(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === "cleanup"));
+  $$(".tab-panel").forEach(p => p.classList.toggle("active", p.id === "tab-cleanup"));
+  refreshCleanupPreview();
+});
+
+// ---------- 1-CLICK ----------
+
+$("#btn-one-click").addEventListener("click", async () => {
+  if (!STATE.serial) {
+    toast("Chưa kết nối máy — bấm ↻ ở góc trên phải", "warn");
+    return;
+  }
+  const data = await loadBloatData();
+  const bloatPkgs = [];
+  for (const cat of data.categories) {
+    for (const pkg of cat.packages) {
+      if (!tierIncludedIn(pkg.tier, "nuclear")) continue;
+      const p = STATE.packagesByName.get(pkg.id);
+      if (p && p.enabled) bloatPkgs.push(pkg.id);
+    }
+  }
+
+  const mode = document.querySelector('input[name="oc-mode"]:checked').value;
+  const modeLabel = mode === "uninstall" ? "🗑️ Gỡ hẳn" : "Tắt";
+
+  openModal({
+    title: `🚀 Tinh giản 1-click — ${modeLabel}?`,
+    body: `
+      <p>Tool sẽ tự động:</p>
+      <ol>
+        <li>💾 Tạo backup trạng thái hiện tại</li>
+        <li>${mode === "uninstall" ? "🗑️" : "🧹"} <b>${modeLabel} ${bloatPkgs.length} app rác</b> ${mode === "uninstall" ? "(xoá app data, APK vẫn trong /system)" : "(ẩn app, dữ liệu vẫn còn)"}</li>
+        <li>⚡ Áp dụng <b>${ONE_CLICK_PRESETS.length} tối ưu khách quan</b> (animation, RAM, Wi-Fi scan, telemetry…)</li>
+        <li>🔄 Đề nghị khởi động lại máy</li>
+      </ol>
+      <p>App quan trọng (<b>CH Play, Google Services, Phone, Camera, System UI</b>) được bảo vệ — không bị động.</p>
+      <p>Cần app gì sau khi xong → cài lại từ CH Play, app mới sạch.</p>
+    `,
+    confirmText: `🚀 Bắt đầu ${modeLabel}`,
+    confirmClass: "btn-primary",
+    onConfirm: () => doOneClick(bloatPkgs, mode),
+  });
+});
+
+async function doOneClick(bloatPkgs, mode = "uninstall") {
+  const endpoint = mode === "uninstall" ? "/api/packages/uninstall" : "/api/packages/disable";
+  const verb = mode === "uninstall" ? "Gỡ" : "Tắt";
+  const totalSteps = 1 + bloatPkgs.length + ONE_CLICK_PRESETS.length;
+  let stepDone = 0;
+  const tick = (label) => {
+    stepDone++;
+    updateProgress(stepDone, totalSteps, label);
+  };
+
+  showLoading(`Bước 1/3: Tạo backup…`);
+  try {
+    await api(`/api/backup?serial=${encodeURIComponent(STATE.serial)}`);
+    tick("Backup xong");
+  } catch (e) {
+    hideLoading();
+    toast("Backup thất bại: " + e.message, "error");
+    return;
+  }
+
+  // Step 2: disable hoặc uninstall bloat theo batch 15
+  const batchSize = 15;
+  let okBloat = 0, failBloat = 0;
+  const failures = [];
+  for (let i = 0; i < bloatPkgs.length; i += batchSize) {
+    const batch = bloatPkgs.slice(i, i + batchSize);
+    try {
+      const data = await api(endpoint, {
+        method: "POST",
+        body: JSON.stringify({ packages: batch, serial: STATE.serial }),
+      });
+      data.results.forEach(r => {
+        if (r.ok) okBloat++;
+        else { failBloat++; failures.push(`${r.package}: ${r.message}`); }
+      });
+    } catch (e) {
+      failBloat += batch.length;
+      failures.push(`Batch error: ${e.message}`);
+    }
+    stepDone += batch.length;
+    updateProgress(stepDone, totalSteps, `Bước 2/3: ${verb} app rác (${okBloat}/${bloatPkgs.length})…`);
+  }
+
+  // Step 3: áp dụng presets
+  let okPreset = 0, failPreset = 0;
+  for (const presetId of ONE_CLICK_PRESETS) {
+    try {
+      await api("/api/optimize/apply", {
+        method: "POST",
+        body: JSON.stringify({ preset_id: presetId, serial: STATE.serial }),
+      });
+      okPreset++;
+    } catch (e) {
+      failPreset++;
+      failures.push(`Preset ${presetId}: ${e.message}`);
+    }
+    tick(`Bước 3/3: Tối ưu (${okPreset}/${ONE_CLICK_PRESETS.length})…`);
+  }
+
+  hideLoading();
+
+  if (failures.length) console.warn("1-click failures:\n" + failures.join("\n"));
+
+  await loadPackages();
+
+  openModal({
+    title: "✨ Tinh giản hoàn tất!",
+    body: `
+      <p><b>Kết quả:</b></p>
+      <ul>
+        <li>✅ ${verb} <b>${okBloat}</b> app rác${failBloat ? ` (${failBloat} không thành công — xem console)` : ""}</li>
+        <li>✅ Áp dụng <b>${okPreset}</b> tối ưu${failPreset ? ` (${failPreset} không thành công)` : ""}</li>
+        <li>💾 Backup lưu tại <code>~/Desktop/sony-tool/backups/</code></li>
+      </ul>
+      <p>Bấm <b>Khởi động lại máy</b> để áp dụng toàn bộ. Sau khi máy bật lại, bạn sẽ thấy:</p>
+      <ul>
+        <li>Animation tắt → chạm là phản hồi tức thì</li>
+        <li>RAM trống nhiều → app mở nhanh</li>
+        <li>Background ít → pin trâu hơn</li>
+        <li>Không còn bloat trong app drawer</li>
+      </ul>
+    `,
+    confirmText: "🔄 Khởi động lại máy",
+    confirmClass: "btn-primary",
+    onConfirm: async () => {
+      try {
+        await api(`/api/reboot?serial=${encodeURIComponent(STATE.serial)}`, { method: "POST" });
+        toast("Máy đang khởi động lại… đợi 30-60s rồi bấm ↻", "success");
+      } catch (e) {
+        toast("Lỗi reboot: " + e.message + ". Khởi động lại thủ công.", "warn");
+      }
+    },
+  });
+}
+
+// ---------- optimize presets ----------
+
+async function loadPresets() {
+  try {
+    const data = await api("/api/optimize/presets");
+    // Nhóm theo category
+    const groups = {};
+    data.presets.forEach(p => {
+      const cat = p.category || "Khác";
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(p);
+    });
+
+    const html = Object.entries(groups).map(([cat, items]) => `
+      <div class="preset-group">
+        <h3 class="preset-group-title">${cat}</h3>
+        ${items.map(p => `
+          <div class="preset-item">
+            <div class="preset-head">
+              <span class="preset-icon">${p.icon || "⚙️"}</span>
+              <h4>${p.title}</h4>
+            </div>
+            <p>${p.description}</p>
+            ${p.warning ? `<p class="preset-warning">⚠️ ${p.warning}</p>` : ""}
+            <div class="preset-actions">
+              <button class="btn-primary btn-sm" data-action="apply" data-id="${p.id}">Áp dụng</button>
+              <button class="btn-secondary btn-sm" data-action="revert" data-id="${p.id}">Khôi phục</button>
+            </div>
+          </div>
+        `).join("")}
+      </div>
+    `).join("");
+
+    $("#presets-list").innerHTML = html;
+
+    $$(".preset-item button").forEach(btn => {
+      btn.addEventListener("click", () => applyPreset(btn.dataset.id, btn.dataset.action));
+    });
+  } catch (e) {
+    $("#presets-list").innerHTML = `<p style="color: var(--danger)">Lỗi: ${e.message}</p>`;
+  }
+}
+
+async function applyPreset(id, action) {
+  if (!STATE.serial) {
+    toast("Chưa kết nối máy", "warn");
+    return;
+  }
+  try {
+    const data = await api(`/api/optimize/${action}`, {
+      method: "POST",
+      body: JSON.stringify({ preset_id: id, serial: STATE.serial }),
+    });
+    const ok = data.results.filter(r => r.ok).length;
+    const fail = data.results.length - ok;
+    toast(`${action === "apply" ? "Áp dụng" : "Khôi phục"} "${data.preset}": ${ok} ok${fail ? ", " + fail + " lỗi" : ""}`, fail === 0 ? "success" : "warn");
+  } catch (e) {
+    toast("Lỗi: " + e.message, "error");
+  }
+}
+
+// ---------- backup ----------
+
+$("#btn-export-full").addEventListener("click", async () => {
+  if (!STATE.serial) {
+    toast("Chưa kết nối máy", "warn");
+    return;
+  }
+  showLoading("Đang đọc package + services + getprop…");
+  try {
+    const data = await api(`/api/export-full?serial=${encodeURIComponent(STATE.serial)}`);
+    $("#export-status").innerHTML = `
+      <p style="color: var(--success);margin-top:12px">✅ Xong: <code>${data.file}</code> (${data.size_kb} KB, ${data.count} packages)</p>
+      <p class="muted">Đường dẫn: <code>${data.path}</code></p>
+      <p class="muted">📤 Gửi file này cho dev qua chat.</p>
+    `;
+    toast("Export OK", "success");
+    loadBackups();
+  } catch (e) {
+    toast("Lỗi export: " + e.message, "error");
+  } finally {
+    hideLoading();
+  }
+});
+
+$("#btn-create-backup").addEventListener("click", async () => {
+  if (!STATE.serial) {
+    toast("Chưa kết nối máy", "warn");
+    return;
+  }
+  try {
+    const data = await api(`/api/backup?serial=${encodeURIComponent(STATE.serial)}`);
+    $("#backup-status").innerHTML = `<p style="color: var(--success);margin-top:12px">✅ Đã tạo: <code>${data.file}</code> (${data.count} app)</p>`;
+    toast("Backup OK", "success");
+    loadBackups();
+  } catch (e) {
+    toast("Lỗi backup: " + e.message, "error");
+  }
+});
+
+async function loadBackups() {
+  try {
+    const data = await api("/api/backups");
+    if (data.backups.length === 0) {
+      $("#backup-list").innerHTML = `<p class="muted">Chưa có backup nào.</p>`;
+      return;
+    }
+    $("#backup-list").innerHTML = `
+      <ul style="padding-left:20px">
+        ${data.backups.map(b => `<li><code>${b.name}</code> <span class="muted">(${b.size_kb} KB)</span></li>`).join("")}
+      </ul>
+      <p class="muted" style="margin-top:10px">File lưu trong <code>~/Desktop/sony-tool/backups/</code></p>
+    `;
+  } catch (e) {
+    $("#backup-list").innerHTML = `<p style="color: var(--danger)">Lỗi: ${e.message}</p>`;
+  }
+}
+
+// ---------- init ----------
+
+(async function init() {
+  await refreshStatus();
+  loadPresets();
+  await loadBloatData();
+  refreshCleanupPreview();
+  if (STATE.serial) {
+    await loadPackages();
+  }
+})();

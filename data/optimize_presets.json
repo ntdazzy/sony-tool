@@ -1,0 +1,332 @@
+{
+  "_comment": "Preset tinh chỉnh hệ thống qua `settings put` và `device_config`. Tất cả có thể đảo ngược.",
+  "presets": [
+    {
+      "id": "animations_off",
+      "icon": "⚡",
+      "category": "Tốc độ",
+      "title": "Tắt animation hoàn toàn",
+      "description": "Bỏ 3 loại animation chuyển cảnh — máy phản hồi tức thì khi chạm. Tác động lớn nhất, dễ thấy nhất.",
+      "apply": [
+        {"namespace": "global", "key": "window_animation_scale", "value": "0"},
+        {"namespace": "global", "key": "transition_animation_scale", "value": "0"},
+        {"namespace": "global", "key": "animator_duration_scale", "value": "0"}
+      ],
+      "revert": [
+        {"namespace": "global", "key": "window_animation_scale", "value": "1"},
+        {"namespace": "global", "key": "transition_animation_scale", "value": "1"},
+        {"namespace": "global", "key": "animator_duration_scale", "value": "1"}
+      ]
+    },
+    {
+      "id": "animations_half",
+      "icon": "🌀",
+      "category": "Tốc độ",
+      "title": "Animation 50% (cân bằng đẹp / nhanh)",
+      "description": "Giảm 50% — vẫn có hiệu ứng nhưng mượt nhanh.",
+      "apply": [
+        {"namespace": "global", "key": "window_animation_scale", "value": "0.5"},
+        {"namespace": "global", "key": "transition_animation_scale", "value": "0.5"},
+        {"namespace": "global", "key": "animator_duration_scale", "value": "0.5"}
+      ],
+      "revert": [
+        {"namespace": "global", "key": "window_animation_scale", "value": "1"},
+        {"namespace": "global", "key": "transition_animation_scale", "value": "1"},
+        {"namespace": "global", "key": "animator_duration_scale", "value": "1"}
+      ]
+    },
+    {
+      "id": "background_limit_3",
+      "icon": "📊",
+      "category": "Hiệu năng",
+      "title": "Giới hạn 3 process nền",
+      "description": "Chỉ cho 3 app chạy nền. Tiết kiệm RAM mạnh, tốt cho máy phụ ít dùng đa nhiệm.",
+      "warning": "Chat/nhạc khi không mở app có thể bị đóng.",
+      "apply": [
+        {"shell": "device_config put activity_manager max_phantom_processes 3"}
+      ],
+      "revert": [
+        {"shell": "device_config delete activity_manager max_phantom_processes"}
+      ]
+    },
+    {
+      "id": "force_dark_mode",
+      "icon": "🌙",
+      "category": "Hiển thị",
+      "title": "Bật dark mode toàn hệ thống",
+      "description": "Một số app chưa hỗ trợ dark sẽ bị ép tối — tiết kiệm pin OLED.",
+      "apply": [
+        {"namespace": "secure", "key": "ui_night_mode", "value": "2"}
+      ],
+      "revert": [
+        {"namespace": "secure", "key": "ui_night_mode", "value": "1"}
+      ]
+    },
+    {
+      "id": "always_on_display_off",
+      "icon": "🔋",
+      "category": "Pin",
+      "title": "Tắt Always-On Display",
+      "description": "Tắt màn hình hiển thị 24/7 — pin trâu hơn rõ rệt.",
+      "apply": [
+        {"namespace": "secure", "key": "doze_always_on", "value": "0"}
+      ],
+      "revert": [
+        {"namespace": "secure", "key": "doze_always_on", "value": "1"}
+      ]
+    },
+    {
+      "id": "disable_lift_to_wake",
+      "icon": "🔋",
+      "category": "Pin",
+      "title": "Tắt nâng máy để mở (Lift to Wake)",
+      "description": "Cảm biến nâng máy lên thì sáng — tắt để khỏi sáng oan, đỡ tốn pin.",
+      "apply": [
+        {"namespace": "secure", "key": "doze_pulse_on_pick_up", "value": "0"}
+      ],
+      "revert": [
+        {"namespace": "secure", "key": "doze_pulse_on_pick_up", "value": "1"}
+      ]
+    },
+    {
+      "id": "low_battery_25",
+      "icon": "🔋",
+      "category": "Pin",
+      "title": "Cảnh báo pin sớm hơn (ở 25%)",
+      "description": "Bình thường máy chỉ kêu ở 15%. Đổi 25% để có thời gian tìm sạc.",
+      "apply": [
+        {"shell": "settings put global low_power_trigger_level 25"}
+      ],
+      "revert": [
+        {"shell": "settings put global low_power_trigger_level 15"}
+      ]
+    },
+    {
+      "id": "disable_google_backup",
+      "icon": "🚫",
+      "category": "Riêng tư",
+      "title": "Tắt Google Backup",
+      "description": "Không upload dữ liệu/ảnh/app lên Google Drive. Tiết kiệm data + pin.",
+      "apply": [
+        {"namespace": "secure", "key": "backup_enabled", "value": "0"},
+        {"namespace": "secure", "key": "backup_auto_restore", "value": "0"}
+      ],
+      "revert": [
+        {"namespace": "secure", "key": "backup_enabled", "value": "1"},
+        {"namespace": "secure", "key": "backup_auto_restore", "value": "1"}
+      ]
+    },
+    {
+      "id": "disable_telemetry",
+      "icon": "🚫",
+      "category": "Riêng tư",
+      "title": "Tắt thu thập dữ liệu sử dụng",
+      "description": "Tắt báo cáo lỗi/usage gửi Google. Tăng riêng tư, giảm chạy ngầm.",
+      "apply": [
+        {"namespace": "global", "key": "send_action_app_error", "value": "0"},
+        {"namespace": "secure", "key": "send_action_app_error", "value": "0"},
+        {"namespace": "global", "key": "upload_apps_data_usage", "value": "0"}
+      ],
+      "revert": [
+        {"namespace": "global", "key": "send_action_app_error", "value": "1"},
+        {"namespace": "secure", "key": "send_action_app_error", "value": "1"}
+      ]
+    },
+    {
+      "id": "disable_wifi_scan_always",
+      "icon": "📶",
+      "category": "Pin",
+      "title": "Tắt quét Wi-Fi liên tục",
+      "description": "Android scan Wi-Fi nền dù bạn không cần. Tắt giúp tiết kiệm pin đáng kể.",
+      "apply": [
+        {"namespace": "global", "key": "wifi_scan_always_enabled", "value": "0"},
+        {"namespace": "global", "key": "ble_scan_always_enabled", "value": "0"}
+      ],
+      "revert": [
+        {"namespace": "global", "key": "wifi_scan_always_enabled", "value": "1"},
+        {"namespace": "global", "key": "ble_scan_always_enabled", "value": "1"}
+      ]
+    },
+    {
+      "id": "doze_aggressive",
+      "icon": "💤",
+      "category": "Pin",
+      "title": "Doze mode tích cực (ngủ sâu hơn)",
+      "description": "Máy vào chế độ ngủ sâu nhanh hơn khi không dùng. Pin trâu hơn rõ ở chế độ chờ.",
+      "warning": "Thông báo của vài app có thể bị delay.",
+      "apply": [
+        {"shell": "dumpsys deviceidle whitelist -com.google.android.gms"},
+        {"shell": "dumpsys deviceidle enable all"}
+      ],
+      "revert": [
+        {"shell": "dumpsys deviceidle disable all"},
+        {"shell": "dumpsys deviceidle whitelist +com.google.android.gms"}
+      ]
+    },
+    {
+      "id": "disable_haptic_touch",
+      "icon": "📳",
+      "category": "Hiệu năng",
+      "title": "Tắt rung khi chạm + âm thanh chạm",
+      "description": "Tắt haptic feedback khi gõ phím + click. Đỡ tốn pin, đỡ nóng vibrator motor.",
+      "apply": [
+        {"namespace": "system", "key": "haptic_feedback_enabled", "value": "0"},
+        {"namespace": "system", "key": "sound_effects_enabled", "value": "0"}
+      ],
+      "revert": [
+        {"namespace": "system", "key": "haptic_feedback_enabled", "value": "1"},
+        {"namespace": "system", "key": "sound_effects_enabled", "value": "1"}
+      ]
+    },
+    {
+      "id": "screen_timeout_30s",
+      "icon": "⏱️",
+      "category": "Pin",
+      "title": "Màn hình tự tắt sau 30 giây",
+      "description": "Giảm thời gian sáng từ 1-2 phút xuống 30s. Pin trâu hơn rõ rệt.",
+      "apply": [
+        {"namespace": "system", "key": "screen_off_timeout", "value": "30000"}
+      ],
+      "revert": [
+        {"namespace": "system", "key": "screen_off_timeout", "value": "60000"}
+      ]
+    },
+    {
+      "id": "disable_charging_sound",
+      "icon": "🔇",
+      "category": "Hiển thị",
+      "title": "Tắt âm báo khi cắm sạc",
+      "description": "Cắm sạc đỡ kêu \"ting\" nhức đầu.",
+      "apply": [
+        {"namespace": "global", "key": "charging_sounds_enabled", "value": "0"},
+        {"namespace": "secure", "key": "charging_sounds_enabled", "value": "0"}
+      ],
+      "revert": [
+        {"namespace": "global", "key": "charging_sounds_enabled", "value": "1"},
+        {"namespace": "secure", "key": "charging_sounds_enabled", "value": "1"}
+      ]
+    },
+    {
+      "id": "auto_rotate_off",
+      "icon": "🔒",
+      "category": "Pin",
+      "title": "Tắt xoay màn hình tự động",
+      "description": "Tắt cảm biến xoay (accelerometer). Đỡ tốn pin, đỡ xoay nhầm khi nằm. Có thể bật tạm trong Quick Settings khi cần.",
+      "apply": [
+        {"namespace": "system", "key": "accelerometer_rotation", "value": "0"}
+      ],
+      "revert": [
+        {"namespace": "system", "key": "accelerometer_rotation", "value": "1"}
+      ]
+    },
+    {
+      "id": "adaptive_brightness_off",
+      "icon": "☀️",
+      "category": "Pin",
+      "title": "Tắt độ sáng thích ứng",
+      "description": "Tắt cảm biến ánh sáng tự điều chỉnh độ sáng. Bạn chỉnh tay → pin tiết kiệm + không bị nhảy độ sáng oan.",
+      "apply": [
+        {"namespace": "system", "key": "screen_brightness_mode", "value": "0"}
+      ],
+      "revert": [
+        {"namespace": "system", "key": "screen_brightness_mode", "value": "1"}
+      ]
+    },
+    {
+      "id": "ringtone_vibrate_off",
+      "icon": "📵",
+      "category": "Pin",
+      "title": "Tắt rung khi có cuộc gọi đến",
+      "description": "Giữ chuông, bỏ rung. Đỡ tốn pin + đỡ hư motor rung.",
+      "apply": [
+        {"namespace": "system", "key": "vibrate_when_ringing", "value": "0"}
+      ],
+      "revert": [
+        {"namespace": "system", "key": "vibrate_when_ringing", "value": "1"}
+      ]
+    },
+    {
+      "id": "wifi_avail_notif_off",
+      "icon": "📶",
+      "category": "Pin",
+      "title": "Tắt thông báo \"Wi-Fi khả dụng\"",
+      "description": "Android hay popup gợi ý kết nối Wi-Fi mở. Tắt cho đỡ phiền + đỡ scan ngầm.",
+      "apply": [
+        {"namespace": "global", "key": "wifi_networks_available_notification_on", "value": "0"}
+      ],
+      "revert": [
+        {"namespace": "global", "key": "wifi_networks_available_notification_on", "value": "1"}
+      ]
+    },
+    {
+      "id": "live_caption_off",
+      "icon": "🔇",
+      "category": "Hiển thị",
+      "title": "Tắt Live Caption",
+      "description": "Android tự động tạo phụ đề cho mọi audio. Hữu ích cho người khiếm thính, tốn CPU/pin nếu không dùng.",
+      "apply": [
+        {"namespace": "secure", "key": "odi_captions_enabled", "value": "0"},
+        {"namespace": "secure", "key": "odi_captions_volume_ui_enabled", "value": "0"}
+      ],
+      "revert": [
+        {"namespace": "secure", "key": "odi_captions_enabled", "value": "1"}
+      ]
+    },
+    {
+      "id": "limit_ad_tracking",
+      "icon": "🛡️",
+      "category": "Riêng tư",
+      "title": "Cấm app cá nhân hoá quảng cáo theo bạn",
+      "description": "Bật \"Limit Ad Personalization\". App vẫn hiện quảng cáo nhưng không follow hành vi của bạn.",
+      "apply": [
+        {"namespace": "secure", "key": "limit_ad_tracking", "value": "1"}
+      ],
+      "revert": [
+        {"namespace": "secure", "key": "limit_ad_tracking", "value": "0"}
+      ]
+    },
+    {
+      "id": "network_suggestions_off",
+      "icon": "🚫",
+      "category": "Riêng tư",
+      "title": "Tắt Google đề xuất Wi-Fi",
+      "description": "Google đề xuất kết nối Wi-Fi công cộng dựa trên crowdsourced data. Tắt cho riêng tư.",
+      "apply": [
+        {"namespace": "global", "key": "network_recommendations_enabled", "value": "0"}
+      ],
+      "revert": [
+        {"namespace": "global", "key": "network_recommendations_enabled", "value": "1"}
+      ]
+    },
+    {
+      "id": "captive_portal_off",
+      "icon": "🔌",
+      "category": "Riêng tư",
+      "title": "Tắt kiểm tra Captive Portal",
+      "description": "Mỗi khi kết Wi-Fi, máy ping Google check internet thật/giả. Tắt → đỡ phụ thuộc Google.",
+      "warning": "Có thể hiện sai \"Wi-Fi không có internet\" dù vẫn dùng được.",
+      "apply": [
+        {"shell": "settings put global captive_portal_mode 0"},
+        {"shell": "settings put global captive_portal_detection_enabled 0"}
+      ],
+      "revert": [
+        {"shell": "settings put global captive_portal_mode 1"},
+        {"shell": "settings put global captive_portal_detection_enabled 1"}
+      ]
+    },
+    {
+      "id": "cached_processes_limit",
+      "icon": "📊",
+      "category": "Hiệu năng",
+      "title": "Giảm cached process tối đa (Android 12+)",
+      "description": "Mặc định Android giữ 32 process cached trong RAM. Giảm xuống 16 → giải phóng RAM đáng kể, app mới mở nhanh hơn.",
+      "warning": "App switch giữa các app cũ có thể bị reload (chậm 1-2s).",
+      "apply": [
+        {"shell": "device_config put activity_manager max_cached_processes 16"}
+      ],
+      "revert": [
+        {"shell": "device_config delete activity_manager max_cached_processes"}
+      ]
+    }
+  ]
+}
