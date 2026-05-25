@@ -129,7 +129,8 @@
       ],
       "revert": [
         {"namespace": "global", "key": "send_action_app_error", "value": "1"},
-        {"namespace": "secure", "key": "send_action_app_error", "value": "1"}
+        {"namespace": "secure", "key": "send_action_app_error", "value": "1"},
+        {"namespace": "global", "key": "upload_apps_data_usage", "value": "1"}
       ]
     },
     {
@@ -269,7 +270,8 @@
         {"namespace": "secure", "key": "odi_captions_volume_ui_enabled", "value": "0"}
       ],
       "revert": [
-        {"namespace": "secure", "key": "odi_captions_enabled", "value": "1"}
+        {"namespace": "secure", "key": "odi_captions_enabled", "value": "1"},
+        {"namespace": "secure", "key": "odi_captions_volume_ui_enabled", "value": "1"}
       ]
     },
     {
