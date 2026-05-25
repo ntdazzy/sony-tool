@@ -565,6 +565,113 @@
     </div>
   </div>
 
+  <!-- ROM flash wizard (full-screen 3 stages) -->
+  <div class="flash-wizard" id="flash-wizard" hidden>
+    <div class="flash-wizard-inner">
+      <button class="flash-wizard-close" id="btn-flash-wiz-close" title="Đóng (chỉ khi đang chờ Flash Mode)">×</button>
+
+      <!-- STAGE A: Flash Mode guide -->
+      <div class="flash-stage" id="flash-stage-a">
+        <h2 class="flash-stage-title">Bước 1 — Vào Flash Mode</h2>
+        <div class="fm-guide-row">
+          <div class="fm-step">
+            <div class="fm-phone fm-phone-off">
+              <div class="fm-screen"></div>
+              <div class="fm-power-btn"></div>
+            </div>
+            <div class="fm-step-label">1. <b>Tắt máy</b> hoàn toàn</div>
+          </div>
+          <div class="fm-arrow">→</div>
+          <div class="fm-step">
+            <div class="fm-phone fm-phone-vol">
+              <div class="fm-screen"></div>
+              <div class="fm-vol-btn"></div>
+              <div class="fm-finger">👆</div>
+            </div>
+            <div class="fm-step-label">2. <b>Giữ Vol Down</b></div>
+          </div>
+          <div class="fm-arrow">→</div>
+          <div class="fm-step">
+            <div class="fm-phone fm-phone-usb">
+              <div class="fm-screen"></div>
+              <div class="fm-led"></div>
+              <div class="fm-usb-cable"></div>
+            </div>
+            <div class="fm-step-label">3. <b>Cắm USB</b> (LED xanh sáng)</div>
+          </div>
+        </div>
+
+        <div class="fm-wait-status" id="fm-wait-status">
+          <div class="fm-spinner"></div>
+          <span id="fm-wait-text">Đang chờ máy vào Flash Mode…</span>
+        </div>
+
+        <div class="fm-help muted" id="fm-help-text">
+          Lần đầu chạy newflasher trên máy này, Windows sẽ hỏi cài <b>Sony Mobile Flasher driver</b>.
+          Bấm Allow → Yes → đợi cài xong (~30s).
+        </div>
+
+        <div class="flash-stage-actions">
+          <button class="btn-secondary" id="btn-fm-manual-check">Tôi đã vào Flash Mode, kiểm tra ngay</button>
+          <button class="btn-danger" id="btn-fm-cancel">Huỷ</button>
+        </div>
+      </div>
+
+      <!-- STAGE B: Flashing -->
+      <div class="flash-stage" id="flash-stage-b" hidden>
+        <h2 class="flash-stage-title">Bước 2 — Đang cài ROM</h2>
+
+        <div class="circle-progress">
+          <svg viewBox="0 0 200 200" class="circle-progress-svg">
+            <circle class="circle-bg" cx="100" cy="100" r="88"></circle>
+            <circle class="circle-fg" cx="100" cy="100" r="88"
+                    pathLength="100" id="circle-fg"></circle>
+          </svg>
+          <div class="circle-progress-text">
+            <div class="circle-pct" id="circle-pct">0%</div>
+            <div class="circle-sub" id="circle-sub">khởi tạo…</div>
+          </div>
+        </div>
+
+        <div class="flash-meta-grid">
+          <div><span class="muted">Partition:</span> <b id="flash-current-partition">—</b></div>
+          <div><span class="muted">Đã xong:</span> <b id="flash-parts-done">0/?</b></div>
+          <div><span class="muted">Thời gian:</span> <b id="flash-elapsed">0s</b></div>
+        </div>
+
+        <details class="flash-log-details">
+          <summary>Xem log chi tiết</summary>
+          <pre class="flash-log" id="flash-log"></pre>
+        </details>
+
+        <div class="flash-warn">
+          ⚠️ <b>KHÔNG rút cáp USB</b> hoặc đóng tool cho tới khi xong. Có thể brick máy.
+        </div>
+      </div>
+
+      <!-- STAGE C: Done -->
+      <div class="flash-stage" id="flash-stage-c" hidden>
+        <canvas class="confetti-canvas" id="confetti-canvas"></canvas>
+        <div class="done-checkmark">
+          <svg viewBox="0 0 100 100">
+            <circle class="check-circle" cx="50" cy="50" r="45"></circle>
+            <path class="check-tick" d="M 28 52 L 44 68 L 72 36"></path>
+          </svg>
+        </div>
+        <h2 class="flash-stage-title done-title" id="flash-done-title">Cài ROM thành công!</h2>
+        <p id="flash-done-summary" class="muted">—</p>
+        <div class="flash-done-instructions">
+          <ol>
+            <li>Rút cáp USB</li>
+            <li>Bấm <b>nút nguồn</b> ~5 giây để khởi động máy</li>
+            <li>Lần boot đầu sẽ lâu hơn bình thường (3-5 phút)</li>
+          </ol>
+        </div>
+        <button class="btn-primary btn-lg" id="btn-flash-done-close">Xong</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ROM download modal -->
   <div class="modal-backdrop" id="rom-dl-modal" hidden>
     <div class="modal" style="max-width:560px">

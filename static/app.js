@@ -1536,7 +1536,11 @@ async function startRomDownload({ url, version, mode }) {
       if (["done", "error", "cancelled"].includes(p.state)) {
         es.close();
         _romDownloadState.eventSource = null;
-        if (p.state === "done") logEntry(`✅ ROM download xong: ${p.output_dir}`, "success");
+        if (p.state === "done") {
+          logEntry(`✅ ROM download xong: ${p.output_dir}`, "success");
+          // Lưu output_dir cho flash wizard
+          if (window.FLASH) window.FLASH.romDir = p.output_dir;
+        }
         else if (p.state === "error") logEntry(`❌ ROM download lỗi: ${p.error}`, "error");
         else logEntry(`⏹️ ROM download huỷ`, "warn");
       }
@@ -1597,9 +1601,319 @@ $("#btn-rom-load-firmware")?.addEventListener("click", loadRomFirmwareList);
 $("#btn-rom-refresh-cache")?.addEventListener("click", refreshRomCache);
 $("#btn-rom-dl-cancel")?.addEventListener("click", cancelRomDownload);
 $("#btn-rom-dl-close")?.addEventListener("click", closeRomDownloadModal);
-$("#btn-rom-dl-flash")?.addEventListener("click", () => {
-  toast("Day 3-4 chưa làm — wizard flash sẽ implement sau", "warn");
+$("#btn-rom-dl-flash")?.addEventListener("click", openFlashWizard);
+
+// ---------- FLASH WIZARD (Day 4) ----------
+
+const FLASH = {
+  romDir: null,
+  fmPollTimer: null,
+  flashJobId: null,
+  flashEventSource: null,
+  startTime: 0,
+};
+
+function _setFlashStage(stage) {
+  ["a", "b", "c"].forEach(s => {
+    const el = $(`#flash-stage-${s}`);
+    if (el) el.hidden = (s !== stage);
+  });
+}
+
+async function openFlashWizard() {
+  // romDir lấy từ output_dir của download xong gần nhất
+  if (!FLASH.romDir) {
+    const dlPath = $("#rom-dl-modal-body code");
+    if (dlPath) FLASH.romDir = dlPath.textContent.trim();
+  }
+  if (!FLASH.romDir) {
+    toast("Chưa có ROM nào tải xong — tải ROM trước", "warn");
+    return;
+  }
+
+  // Check newflasher có sẵn không
+  try {
+    const nf = await api("/api/rom/flash/check-newflasher");
+    if (!nf.available) {
+      openModal({
+        title: "Cần newflasher.exe",
+        body: `
+          <p>Tool dùng <b>newflasher</b> (MIT license, open-source) của Munjeni để flash ROM.</p>
+          <p>Cần đặt file vào:</p>
+          <p><code style="font-size:11px;word-break:break-all">${nf.expected_path}</code></p>
+          <ol>
+            <li>Vào <a href="${nf.xda_url}" target="_blank">XDA thread của Munjeni</a> → tải <code>newflasher.exe</code></li>
+            <li>Copy vào folder <code>vendor/</code> trong thư mục tool</li>
+            <li>Bấm "Sẵn sàng flash" lại</li>
+          </ol>
+          <p class="muted">Source code (build từ nguồn): <a href="${nf.github_url}" target="_blank">${nf.github_url}</a></p>
+        `,
+        confirmText: "OK, đã hiểu",
+        confirmClass: "btn-primary",
+        onConfirm: () => {},
+      });
+      return;
+    }
+  } catch (e) {
+    toast("Lỗi check newflasher: " + e.message, "error");
+    return;
+  }
+
+  // Close download modal, open wizard
+  closeRomDownloadModal();
+  $("#flash-wizard").hidden = false;
+  _setFlashStage("a");
+  $("#fm-wait-status").classList.remove("detected");
+  $("#fm-wait-text").textContent = "Đang chờ máy vào Flash Mode…";
+  logEntry("🚀 Vào Flash wizard", "action");
+
+  // Start polling Flash Mode
+  startFlashModePolling();
+}
+
+async function startFlashModePolling() {
+  if (FLASH.fmPollTimer) clearInterval(FLASH.fmPollTimer);
+
+  const check = async () => {
+    try {
+      const r = await api("/api/rom/flash-mode/scan");
+      if (!r.available) {
+        $("#fm-wait-text").textContent = "USB scan không khả dụng — bấm 'Kiểm tra ngay' khi đã vào Flash Mode";
+        return;
+      }
+      if (r.in_flash_mode) {
+        $("#fm-wait-status").classList.add("detected");
+        $("#fm-wait-text").textContent = `✓ Phát hiện Flash Mode (PID ${r.flash_mode_pid_hex}) — chuyển sang flash…`;
+        clearInterval(FLASH.fmPollTimer);
+        FLASH.fmPollTimer = null;
+        logEntry(`🔌 Flash Mode detected: ${r.flash_mode_pid_hex}`, "success");
+        // Delay nhỏ cho user thấy detected animation
+        setTimeout(() => startFlashJob(), 1200);
+        return;
+      }
+      const found = r.sony_devices.length;
+      if (found > 0) {
+        $("#fm-wait-text").textContent = `Phát hiện ${found} Sony device nhưng chưa ở Flash Mode (${r.sony_devices.map(d => d.description).join(", ")})`;
+      } else {
+        $("#fm-wait-text").textContent = "Đang chờ máy vào Flash Mode…";
+      }
+    } catch (e) {
+      $("#fm-wait-text").textContent = "Scan lỗi: " + e.message;
+    }
+  };
+
+  check();  // immediate first check
+  FLASH.fmPollTimer = setInterval(check, 1500);
+}
+
+async function startFlashJob() {
+  _setFlashStage("b");
+  $("#circle-fg").style.strokeDashoffset = 100;
+  $("#circle-pct").textContent = "0%";
+  $("#circle-sub").textContent = "khởi tạo…";
+  $("#flash-current-partition").textContent = "—";
+  $("#flash-parts-done").textContent = "0/?";
+  $("#flash-elapsed").textContent = "0s";
+  $("#flash-log").textContent = "";
+  FLASH.startTime = Date.now();
+
+  let job;
+  try {
+    job = await api("/api/rom/flash/start", {
+      method: "POST",
+      body: JSON.stringify({ rom_dir: FLASH.romDir }),
+    });
+  } catch (e) {
+    $("#circle-sub").textContent = "Lỗi";
+    toast("Lỗi: " + e.message, "error");
+    logEntry(`🔥 Flash start lỗi: ${e.message}`, "error");
+    return;
+  }
+  FLASH.flashJobId = job.job_id;
+  logEntry(`🔥 Flash job started: ${job.job_id}`, "action");
+
+  const es = new EventSource(`/api/rom/flash/stream?job_id=${encodeURIComponent(job.job_id)}`);
+  FLASH.flashEventSource = es;
+  es.onmessage = (ev) => {
+    try {
+      const p = JSON.parse(ev.data);
+      updateFlashProgress(p);
+      if (["done", "error", "cancelled"].includes(p.state)) {
+        es.close();
+        FLASH.flashEventSource = null;
+        if (p.state === "done") showFlashDone(p);
+        else if (p.state === "error") showFlashError(p);
+        else showFlashCancelled(p);
+      }
+    } catch (e) {
+      console.warn("Flash SSE parse:", e);
+    }
+  };
+}
+
+function updateFlashProgress(p) {
+  // Percent ước lượng từ partitions_done / total nếu có
+  let pct = 0;
+  if (p.partitions_total > 0 && p.partitions_done > 0) {
+    pct = Math.min(99, (p.partitions_done / p.partitions_total) * 100);
+  }
+  // Circle visual: stroke-dashoffset 100 = empty, 0 = full
+  $("#circle-fg").style.strokeDashoffset = String(100 - pct);
+  $("#circle-pct").textContent = pct.toFixed(0) + "%";
+  $("#circle-sub").textContent = p.state === "flashing" ? "đang flash…" : p.state;
+  $("#flash-current-partition").textContent = p.current_partition || "—";
+  $("#flash-parts-done").textContent = `${p.partitions_done}/${p.partitions_total || "?"}`;
+  $("#flash-elapsed").textContent = _humanDuration(p.elapsed_seconds || 0);
+
+  // Append new log lines
+  if (p.log_tail && p.log_tail.length) {
+    const logEl = $("#flash-log");
+    const existing = logEl.textContent;
+    const newLines = p.log_tail.filter(l => !existing.endsWith(l));
+    if (newLines.length) {
+      logEl.textContent = (existing + "\n" + newLines.join("\n")).trim().slice(-8000);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+  }
+}
+
+function showFlashDone(p) {
+  $("#circle-fg").style.strokeDashoffset = 0;
+  $("#circle-pct").textContent = "100%";
+  $("#circle-sub").textContent = "xong";
+  _setFlashStage("c");
+  const elapsed = _humanDuration(p.elapsed_seconds || ((Date.now() - FLASH.startTime) / 1000));
+  $("#flash-done-summary").textContent = `Thời gian: ${elapsed}. ${p.partitions_done || 0} partition đã flash.`;
+  logEntry(`✅ Flash xong sau ${elapsed}`, "success");
+  toast("✅ Flash ROM thành công!", "success");
+  setTimeout(() => fireConfetti("#confetti-canvas"), 100);
+}
+
+function showFlashError(p) {
+  _setFlashStage("c");
+  $(".done-checkmark").innerHTML = `
+    <svg viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r="45" fill="none" stroke="var(--danger)" stroke-width="4"/>
+      <path d="M 35 35 L 65 65 M 65 35 L 35 65" stroke="var(--danger)" stroke-width="6"
+            stroke-linecap="round" fill="none"/>
+    </svg>`;
+  $("#flash-done-title").textContent = "Flash lỗi";
+  $("#flash-done-title").style.color = "var(--danger)";
+  $("#flash-done-summary").innerHTML = `
+    <b style="color:var(--danger)">${p.error || "Không rõ lý do"}</b><br>
+    <span class="muted tiny">Exit code: ${p.exit_code ?? "—"}</span>
+  `;
+  logEntry(`❌ Flash lỗi: ${p.error}`, "error");
+}
+
+function showFlashCancelled(p) {
+  closeFlashWizard();
+  toast("⏹️ Flash đã huỷ", "warn");
+  logEntry("⏹️ Flash cancelled", "warn");
+}
+
+async function cancelFlashJob() {
+  if (FLASH.fmPollTimer) {
+    clearInterval(FLASH.fmPollTimer);
+    FLASH.fmPollTimer = null;
+  }
+  if (FLASH.flashJobId) {
+    try {
+      await api(`/api/rom/flash/cancel/${FLASH.flashJobId}`, { method: "POST" });
+    } catch (_) {}
+  }
+  closeFlashWizard();
+}
+
+function closeFlashWizard() {
+  if (FLASH.fmPollTimer) { clearInterval(FLASH.fmPollTimer); FLASH.fmPollTimer = null; }
+  if (FLASH.flashEventSource) { FLASH.flashEventSource.close(); FLASH.flashEventSource = null; }
+  $("#flash-wizard").hidden = true;
+}
+
+// Confetti — small canvas particle animation
+function fireConfetti(canvasSel) {
+  const canvas = document.querySelector(canvasSel);
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width = canvas.offsetWidth || 720;
+  const H = canvas.height = canvas.offsetHeight || 500;
+  const colors = ["#4f46e5", "#16a34a", "#ea580c", "#dc2626", "#0ea5e9", "#a855f7", "#facc15"];
+  const N = 120;
+  const particles = Array.from({ length: N }, () => ({
+    x: W / 2 + (Math.random() - 0.5) * 80,
+    y: H / 2 + (Math.random() - 0.5) * 20,
+    vx: (Math.random() - 0.5) * 14,
+    vy: -Math.random() * 16 - 4,
+    g: 0.35 + Math.random() * 0.15,
+    size: 4 + Math.random() * 6,
+    color: colors[Math.floor(Math.random() * colors.length)],
+    rot: Math.random() * Math.PI,
+    vr: (Math.random() - 0.5) * 0.3,
+    life: 1,
+  }));
+  const start = performance.now();
+  function frame(t) {
+    const elapsed = t - start;
+    ctx.clearRect(0, 0, W, H);
+    let alive = 0;
+    for (const p of particles) {
+      p.vy += p.g;
+      p.x += p.vx;
+      p.y += p.vy;
+      p.rot += p.vr;
+      p.life = Math.max(0, 1 - elapsed / 2200);
+      if (p.life > 0 && p.y < H + 20) {
+        alive++;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.globalAlpha = p.life;
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+        ctx.restore();
+      }
+    }
+    if (alive > 0 && elapsed < 2500) requestAnimationFrame(frame);
+    else ctx.clearRect(0, 0, W, H);
+  }
+  requestAnimationFrame(frame);
+}
+
+// Manual "tôi đã vào Flash Mode" button — force one immediate check
+$("#btn-fm-manual-check")?.addEventListener("click", async () => {
+  $("#fm-wait-text").textContent = "Đang scan…";
+  try {
+    const r = await api("/api/rom/flash-mode/scan");
+    if (r.in_flash_mode) {
+      $("#fm-wait-status").classList.add("detected");
+      $("#fm-wait-text").textContent = `✓ Detected ${r.flash_mode_pid_hex}`;
+      if (FLASH.fmPollTimer) { clearInterval(FLASH.fmPollTimer); FLASH.fmPollTimer = null; }
+      setTimeout(() => startFlashJob(), 800);
+    } else if (r.available) {
+      $("#fm-wait-text").textContent = "Chưa detect Flash Mode. Đảm bảo: máy TẮT → giữ Vol Down → cắm USB.";
+    } else {
+      // pyusb/libusb không available — start luôn, user tự confirm
+      if (confirm("Tool không scan được USB. Bạn xác nhận máy đang ở Flash Mode?")) {
+        if (FLASH.fmPollTimer) { clearInterval(FLASH.fmPollTimer); FLASH.fmPollTimer = null; }
+        startFlashJob();
+      }
+    }
+  } catch (e) {
+    $("#fm-wait-text").textContent = "Lỗi: " + e.message;
+  }
 });
+
+$("#btn-fm-cancel")?.addEventListener("click", cancelFlashJob);
+$("#btn-flash-wiz-close")?.addEventListener("click", () => {
+  // Only allow close khi đang chờ Flash Mode hoặc đã done (không cho lúc flash)
+  if (!FLASH.flashJobId || !FLASH.flashEventSource) {
+    closeFlashWizard();
+  } else {
+    toast("⚠️ Đang flash — không được đóng. Bấm Huỷ nếu thật sự muốn dừng.", "warn");
+  }
+});
+$("#btn-flash-done-close")?.addEventListener("click", closeFlashWizard);
 
 // ---------- init ----------
 
