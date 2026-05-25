@@ -1,26 +1,27 @@
-# run.ps1 — Khởi động Sony Debloat Tool tại http://localhost:8765
+# run.ps1 - Start Sony Debloat Tool at http://localhost:8765
+# ASCII-only. Compatible with PowerShell 5.1 and 7+.
 
 $ErrorActionPreference = "Stop"
 $scriptDir = $PSScriptRoot
 Set-Location $scriptDir
 
 if (-not (Test-Path "$scriptDir\.venv")) {
-    Write-Host "❌ Chưa setup. Chạy: .\setup_adb.ps1 trước." -ForegroundColor Red
+    Write-Host "[ERROR] Not setup yet. Run: .\setup_adb.ps1 first." -ForegroundColor Red
     exit 1
 }
 
-# Thêm bundled ADB vào PATH
+# Add bundled ADB to PATH for this session
 $env:PATH = "$scriptDir\platform-tools;$env:PATH"
 
 $port = 8765
 $url = "http://localhost:$port"
 
-Write-Host "🚀 Sony Debloat Tool đang khởi động..." -ForegroundColor Cyan
-Write-Host "📱 Mở trình duyệt: $url" -ForegroundColor Cyan
-Write-Host "🛑 Bấm Ctrl+C để dừng" -ForegroundColor Yellow
+Write-Host "[..] Sony Debloat Tool starting..." -ForegroundColor Cyan
+Write-Host "[..] Open browser: $url" -ForegroundColor Cyan
+Write-Host "[..] Press Ctrl+C to stop" -ForegroundColor Yellow
 Write-Host ""
 
-# Mở browser sau 2s
+# Open browser after 2s in background
 Start-Job -ScriptBlock {
     Start-Sleep -Seconds 2
     Start-Process "http://localhost:8765"

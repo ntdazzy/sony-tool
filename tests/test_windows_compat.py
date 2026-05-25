@@ -97,6 +97,21 @@ def test_run_ps1_uses_windows_venv_path():
     assert r".venv\Scripts" in src or '.venv/Scripts' in src
 
 
+def test_ps1_files_are_ascii_only():
+    """PowerShell 5.1 (Win10/11 default) đọc .ps1 không-BOM sai khi có Unicode →
+    'string is missing the terminator' error. Bắt buộc ASCII thuần."""
+    for fname in ["setup_adb.ps1", "run.ps1"]:
+        path = ROOT / fname
+        raw = path.read_bytes()
+        non_ascii_bytes = [(i, b) for i, b in enumerate(raw) if b > 0x7F]
+        if non_ascii_bytes:
+            preview = non_ascii_bytes[:5]
+            raise AssertionError(
+                f"{fname} chứa byte non-ASCII tại offset {preview} — "
+                f"PowerShell 5.1 sẽ parse sai. Đổi sang ASCII (vd. ✅ → [OK], 'Cài đặt' → 'Settings')."
+            )
+
+
 # ============ BAT script ============
 
 
