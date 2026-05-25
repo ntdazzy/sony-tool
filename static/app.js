@@ -213,6 +213,8 @@ $$(".tab").forEach(btn => {
     if (id === "backup") loadBackups();
     if (id === "cleanup") refreshCleanupPreview();
     if (id === "optimize" && STATE.serial) loadPresetStates();
+    if (id === "apn") loadApnData();
+    if (id === "bootloader" && STATE.serial && !STATE.bootloaderChecked) checkBootloader();
   });
 });
 
@@ -986,6 +988,156 @@ async function loadBackups() {
     $("#backup-list").innerHTML = `<p style="color: var(--danger)">Lỗi: ${e.message}</p>`;
   }
 }
+
+// ---------- APN ----------
+
+let APN_DATA = null;
+
+async function loadApnData() {
+  if (!APN_DATA) {
+    try {
+      APN_DATA = await api("/api/apn-list");
+    } catch (e) {
+      $("#apn-config").innerHTML = `<p style="color:var(--danger)">Lỗi tải APN data: ${e.message}</p>`;
+      return;
+    }
+  }
+  renderApnTabs();
+  renderApnSteps();
+  // Hiển thị config nhà mạng đầu tiên mặc định
+  if (APN_DATA.carriers.length > 0) {
+    showApnCarrier(APN_DATA.carriers[0].id);
+  }
+}
+
+function renderApnTabs() {
+  const html = APN_DATA.carriers.map(c => `
+    <button class="btn-secondary btn-sm apn-tab" data-carrier="${c.id}">${c.icon} ${c.name}</button>
+  `).join("");
+  $("#apn-carrier-tabs").innerHTML = html;
+  $$(".apn-tab").forEach(b => {
+    b.addEventListener("click", () => showApnCarrier(b.dataset.carrier));
+  });
+}
+
+function showApnCarrier(carrierId) {
+  const carrier = APN_DATA.carriers.find(c => c.id === carrierId);
+  if (!carrier) return;
+  // Highlight selected tab
+  $$(".apn-tab").forEach(b => {
+    b.classList.toggle("btn-primary", b.dataset.carrier === carrierId);
+    b.classList.toggle("btn-secondary", b.dataset.carrier !== carrierId);
+  });
+  // Render config table
+  const rows = Object.entries(carrier.settings).map(([k, v]) => `
+    <tr>
+      <td class="apn-label">${k}</td>
+      <td><code class="apn-value" data-copy="${v}">${v}</code></td>
+    </tr>
+  `).join("");
+  $("#apn-config").innerHTML = `
+    <p class="muted" style="margin-top:14px"><b>${carrier.icon} ${carrier.name}</b> — ${carrier.note}</p>
+    <div class="table-wrap" style="margin-top:8px">
+      <table class="apn-table">
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <p class="muted tiny" style="margin-top:6px">Bấm vào giá trị để copy.</p>
+  `;
+  // Copy on click
+  $$(".apn-value").forEach(c => {
+    c.addEventListener("click", () => {
+      const text = c.dataset.copy;
+      navigator.clipboard.writeText(text).then(() => {
+        toast(`Đã copy: ${text}`, "success");
+      }).catch(() => {
+        toast("Trình duyệt chặn clipboard. Copy tay nhé.", "warn");
+      });
+    });
+  });
+}
+
+function renderApnSteps() {
+  if (!APN_DATA.instructions) return;
+  const steps = APN_DATA.instructions.steps.map(s => `<li>${s}</li>`).join("");
+  $("#apn-steps").innerHTML = steps;
+  const tips = APN_DATA.instructions.tips.map(t => `<li>${t}</li>`).join("");
+  $("#apn-tips").innerHTML = `<p class="muted" style="margin-top:12px;font-size:12px"><b>Lưu ý:</b></p><ul class="tip-list" style="font-size:12px">${tips}</ul>`;
+}
+
+$("#btn-open-apn")?.addEventListener("click", async () => {
+  if (!STATE.serial) {
+    toast("Chưa kết nối máy — bấm ↻ ở góc trên phải", "warn");
+    return;
+  }
+  try {
+    const data = await api(`/api/apn-open-settings?serial=${encodeURIComponent(STATE.serial)}`, { method: "POST" });
+    $("#apn-open-status").textContent = "✓ " + (data.message || "Đã mở APN settings trên máy");
+    $("#apn-open-status").style.color = "var(--success)";
+    toast("Đã mở APN Settings trên máy Sony", "success");
+    logEntry("📡 Mở APN settings trên máy", "success");
+  } catch (e) {
+    $("#apn-open-status").textContent = "✗ " + e.message;
+    $("#apn-open-status").style.color = "var(--danger)";
+    toast("Lỗi: " + e.message, "error");
+  }
+});
+
+// ---------- BOOTLOADER ----------
+
+async function checkBootloader() {
+  if (!STATE.serial) {
+    $("#bootloader-result").innerHTML = `<p class="muted" style="margin-top:12px">Chưa kết nối máy — bấm ↻ ở góc trên phải.</p>`;
+    return;
+  }
+  $("#bootloader-result").innerHTML = `<p class="muted" style="margin-top:12px">Đang kiểm tra…</p>`;
+  try {
+    const d = await api(`/api/bootloader-status?serial=${encodeURIComponent(STATE.serial)}`);
+    STATE.bootloaderChecked = true;
+    logEntry(`🔓 Bootloader check: ${d.locked ? "locked" : "unlocked"} (${d.verified_boot_state})`, "info");
+
+    const eligLabels = {
+      no_jp_market: { text: "❌ Không thể unlock", color: "var(--danger)", note: "Máy nội địa Nhật — Sony chính sách không cấp mã unlock cho thị trường này." },
+      already_unlocked: { text: "✓ Đã unlock", color: "var(--success)", note: "Bootloader đã ở trạng thái unlocked." },
+      not_sony: { text: "⚠ Không phải Sony", color: "var(--warn)", note: "Manufacturer không phải Sony — tool này thiết kế cho Sony Xperia." },
+      check_sony_site: { text: "🔍 Cần check Sony site", color: "var(--primary)", note: "Có thể đủ điều kiện. Lấy IMEI (bấm *#06# trên máy) và check ở Sony Developer site." },
+    };
+    const elig = eligLabels[d.eligibility] || { text: d.eligibility, color: "var(--text-3)", note: "" };
+
+    const vbsColors = { green: "var(--success)", yellow: "var(--warn)", orange: "var(--warn)", red: "var(--danger)" };
+    const vbsColor = vbsColors[d.verified_boot_state] || "var(--text-3)";
+
+    $("#bootloader-result").innerHTML = `
+      <div class="device-info" style="margin-top:14px">
+        <table>
+          <tr><td>Model</td><td><b>${d.model || "—"}</b></td></tr>
+          <tr><td>Device code</td><td><code>${d.device || "—"}</code></td></tr>
+          <tr><td>Manufacturer</td><td>${d.manufacturer || "—"}</td></tr>
+          <tr><td>Build type</td><td><code>${d.build_type || "—"}</code></td></tr>
+          <tr><td>Bootloader</td><td><b style="color:${d.locked ? "var(--danger)" : "var(--success)"}">${d.locked ? "🔒 LOCKED" : "🔓 UNLOCKED"}</b> <code class="muted">(${d.locked_raw})</code></td></tr>
+          <tr><td>Verified Boot State</td><td><b style="color:${vbsColor}">${d.verified_boot_state.toUpperCase()}</b></td></tr>
+          <tr><td>OEM unlock allowed</td><td>${d.oem_unlock_disallowed === "0" ? "✓ Cho phép" : d.oem_unlock_disallowed === "1" ? "✗ Bị cấm (carrier-locked)" : "—"}</td></tr>
+          <tr><td>JP market?</td><td>${d.is_jp_market ? "🇯🇵 Có" : "🌐 Không"}</td></tr>
+        </table>
+      </div>
+      <div class="warn" style="margin-top:14px;border-color:${elig.color};color:var(--text-2)">
+        <b style="color:${elig.color}">${elig.text}</b><br>
+        ${elig.note}
+      </div>
+      ${d.eligibility === "check_sony_site" ? `
+        <p class="muted" style="margin-top:12px;font-size:12px">
+          → Bấm <code>${d.imei_dial_code}</code> trên máy lấy IMEI, sau đó vào
+          <a href="${d.sony_unlock_url}" target="_blank">Sony Developer Site</a> để check.
+        </p>
+      ` : ""}
+    `;
+  } catch (e) {
+    $("#bootloader-result").innerHTML = `<p style="color:var(--danger);margin-top:12px">Lỗi: ${e.message}</p>`;
+    logEntry(`🔓 Bootloader check lỗi: ${e.message}`, "error");
+  }
+}
+
+$("#btn-check-bootloader")?.addEventListener("click", checkBootloader);
 
 // ---------- init ----------
 

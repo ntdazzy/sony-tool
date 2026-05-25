@@ -327,6 +327,62 @@
       "revert": [
         {"shell": "device_config delete activity_manager max_cached_processes"}
       ]
+    },
+    {
+      "id": "bt_abs_volume_off",
+      "icon": "🎧",
+      "category": "Âm thanh",
+      "title": "Tắt Bluetooth Absolute Volume",
+      "description": "Android sync volume với BT headphone qua AVRCP. Một số tai nghe bị bug → âm chói/rè ở mức volume nhất định. Tắt giúp âm trung thực hơn, BT volume độc lập với máy.",
+      "apply": [
+        {"namespace": "system", "key": "bluetooth_disable_absolute_volume", "value": "1"}
+      ],
+      "revert": [
+        {"namespace": "system", "key": "bluetooth_disable_absolute_volume", "value": "0"}
+      ]
+    },
+    {
+      "id": "safe_volume_warning_off",
+      "icon": "🔊",
+      "category": "Âm thanh",
+      "title": "Bỏ giới hạn volume tai nghe",
+      "description": "Mặc định Android cảnh báo khi volume tai nghe > 60% (luật EU). Tắt để có thể tăng max khi cần.",
+      "warning": "Hại thính giác nếu để max thường xuyên. Cẩn thận.",
+      "apply": [
+        {"namespace": "global", "key": "audio_safe_volume_state", "value": "2"}
+      ],
+      "revert": [
+        {"namespace": "global", "key": "audio_safe_volume_state", "value": "1"}
+      ]
+    },
+    {
+      "id": "bt_a2dp_codec_hd",
+      "icon": "🎵",
+      "category": "Âm thanh",
+      "title": "Ưu tiên codec Bluetooth chất lượng cao",
+      "description": "Buộc dùng codec aptX HD / LDAC nếu BT headphone hỗ trợ. Âm thanh chi tiết, ít méo hơn SBC mặc định.",
+      "warning": "Nếu BT headphone không hỗ trợ → sẽ tự fallback về SBC, không hại gì.",
+      "apply": [
+        {"shell": "settings put system bluetooth_select_a2dp_codec_priority 6"}
+      ],
+      "revert": [
+        {"shell": "settings put system bluetooth_select_a2dp_codec_priority 0"}
+      ]
+    },
+    {
+      "id": "tap_to_wake_off",
+      "icon": "👆",
+      "category": "Pin",
+      "title": "Tắt chạm/double-tap để mở màn hình",
+      "description": "Tắt cả tap-to-wake và double-tap gesture. Đỡ bật màn hình oan khi cầm máy, lau túi.",
+      "apply": [
+        {"namespace": "secure", "key": "tap_to_wake", "value": "0"},
+        {"namespace": "secure", "key": "doze_tap_gesture", "value": "0"}
+      ],
+      "revert": [
+        {"namespace": "secure", "key": "tap_to_wake", "value": "1"},
+        {"namespace": "secure", "key": "doze_tap_gesture", "value": "1"}
+      ]
     }
   ]
 }

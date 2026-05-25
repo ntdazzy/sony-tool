@@ -1332,6 +1332,35 @@ details li { margin-bottom: 3px; }
   color: var(--text);
 }
 
+/* ----- APN tab ----- */
+
+.apn-table { font-size: 13px; }
+.apn-table td { padding: 8px 14px; }
+.apn-table tr:hover { background: var(--surface-2); }
+.apn-label {
+  color: var(--text-3);
+  width: 220px;
+  font-weight: 500;
+}
+.apn-value {
+  cursor: pointer;
+  background: var(--surface-2);
+  padding: 3px 8px;
+  border-radius: var(--r-sm);
+  user-select: all;
+  transition: background 0.12s;
+}
+.apn-value:hover {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.apn-tab.btn-primary {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+}
+
 /* ----- Subtitle compatibility ----- */
 
 .brand .logo,

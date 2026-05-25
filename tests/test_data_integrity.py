@@ -154,6 +154,6 @@ def test_optimize_presets_has_animation_off():
 
 def test_optimize_presets_categories_in_vietnamese():
     data = _load("optimize_presets.json")
-    valid_cats = {"Tốc độ", "Hiệu năng", "Pin", "Hiển thị", "Riêng tư", "Khác"}
+    valid_cats = {"Tốc độ", "Hiệu năng", "Pin", "Hiển thị", "Riêng tư", "Âm thanh", "Khác"}
     for p in data["presets"]:
         assert p["category"] in valid_cats, f"Category lạ: {p['category']}"

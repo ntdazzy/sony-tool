@@ -31,6 +31,8 @@
       <button class="tab" data-tab="cleanup">Dọn sạch</button>
       <button class="tab" data-tab="all">Tất cả app</button>
       <button class="tab" data-tab="optimize">Tối ưu</button>
+      <button class="tab" data-tab="apn">APN</button>
+      <button class="tab" data-tab="bootloader">Bootloader</button>
       <button class="tab" data-tab="backup">Backup</button>
       <button class="tab" data-tab="help">Hướng dẫn</button>
     </nav>
@@ -245,6 +247,71 @@
 
         <div class="card">
           <div id="presets-list">Đang tải…</div>
+        </div>
+
+      </section>
+
+      <!-- =================== APN =================== -->
+      <section class="tab-panel" id="tab-apn">
+
+        <div class="page-head">
+          <h2>Cài APN cho SIM Việt Nam</h2>
+          <p>Sony nội địa Nhật không preload APN VN → phải nhập tay khi đổi sang SIM Việt</p>
+        </div>
+
+        <div class="card">
+          <h2>Bước 1 — Mở APN settings trên máy</h2>
+          <p class="muted">Bấm nút bên dưới, tool sẽ mở thẳng vào trang APN trên máy bạn (không cần lục Settings).</p>
+          <button class="btn-primary" id="btn-open-apn">📡 Mở APN Settings trên máy</button>
+          <div id="apn-open-status" class="muted" style="margin-top:8px;font-size:12px"></div>
+        </div>
+
+        <div class="card">
+          <h2>Bước 2 — Chọn nhà mạng + copy config</h2>
+          <p class="muted">Chọn nhà mạng đang dùng. Trên máy bấm dấu <b>+</b> để thêm APN mới, sau đó nhập đúng từng trường theo bảng dưới.</p>
+          <div class="filter-row" id="apn-carrier-tabs"></div>
+          <div id="apn-config"></div>
+        </div>
+
+        <div class="card card-tip">
+          <h3>Hướng dẫn chi tiết</h3>
+          <ol class="tip-list" id="apn-steps"></ol>
+          <div id="apn-tips"></div>
+        </div>
+
+      </section>
+
+      <!-- =================== BOOTLOADER =================== -->
+      <section class="tab-panel" id="tab-bootloader">
+
+        <div class="page-head">
+          <h2>Kiểm tra Bootloader</h2>
+          <p>Xem trạng thái lock + máy có đủ điều kiện unlock không</p>
+        </div>
+
+        <div class="card">
+          <h2>Trạng thái bootloader</h2>
+          <p class="muted">Đọc trạng thái lock + verified boot state từ máy qua ADB.</p>
+          <button class="btn-primary" id="btn-check-bootloader">Kiểm tra ngay</button>
+          <div id="bootloader-result"></div>
+        </div>
+
+        <div class="card card-tip">
+          <h3>Về Sony unlock bootloader</h3>
+          <ul class="tip-list">
+            <li><b>Máy thị trường Nhật</b> (XQ-AS42, SO-52A, SOG02, A002SO...): Sony <b>KHÔNG cấp mã unlock</b>. Không có exploit công khai. Bỏ ý định.</li>
+            <li><b>Máy quốc tế</b> (XQ-AS52, XQ-AS62, XQ-BC42...): có thể đủ điều kiện. Kiểm tra IMEI ở Sony site.</li>
+            <li>Quy trình unlock chính thức:
+              <ol style="margin-top:4px">
+                <li>Dial <code>*#06#</code> để lấy IMEI</li>
+                <li>Vào <a href="https://developer.sony.com/develop/open-devices/get-started/unlock-bootloader/" target="_blank">Sony Open Devices</a></li>
+                <li>Nhập IMEI → nếu eligible → Sony gửi mã unlock</li>
+                <li>Trên máy: Settings → Developer Options → OEM unlocking ON</li>
+                <li>Reboot vào fastboot, chạy: <code>fastboot oem unlock 0x&lt;mã&gt;</code></li>
+              </ol>
+            </li>
+            <li><b>Cảnh báo</b>: unlock = factory reset + mất bảo hành + mất DRM keys (camera quality giảm, không xem HDR Netflix).</li>
+          </ul>
         </div>
 
       </section>

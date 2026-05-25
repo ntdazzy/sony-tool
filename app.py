@@ -450,6 +450,81 @@ def export_full(serial: str | None = None):
     }
 
 
+# Sony JP market device codes — bootloader locked by Sony policy
+_SONY_JP_MARKET_PREFIXES = (
+    "SO-52", "SO-51", "SO-41", "SO-04", "SO-05",  # docomo
+    "SOG02", "SOG01", "SOG03", "SOG04",  # au
+    "A002SO", "A001SO", "A101SO", "A102SO",  # SoftBank
+    "XQ-AS42", "XQ-AS72",  # SIM-free Japan
+)
+
+
+@app.get("/api/bootloader-status")
+def bootloader_status(serial: str | None = None):
+    """Đọc trạng thái bootloader + estimate unlock eligibility."""
+    def getprop(key: str) -> str:
+        try:
+            return adb.shell(f"getprop {key}", serial=serial, timeout=10).strip()
+        except adb.AdbError:
+            return ""
+
+    locked_raw = getprop("ro.boot.flash.locked")  # "0"=unlocked, "1"=locked, ""=unknown
+    verified = getprop("ro.boot.verifiedbootstate")  # green/yellow/orange/red
+    model = getprop("ro.product.model")
+    device = getprop("ro.product.device")
+    manufacturer = getprop("ro.product.manufacturer")
+    build_type = getprop("ro.build.type")  # user/userdebug
+
+    try:
+        oem_disallowed = adb.settings_get("global", "oem_unlock_disallowed", serial=serial)
+    except adb.AdbError:
+        oem_disallowed = ""
+
+    is_jp_market = any(model.upper().startswith(p) for p in _SONY_JP_MARKET_PREFIXES) or any(
+        device.upper().startswith(p) for p in _SONY_JP_MARKET_PREFIXES
+    )
+
+    # Eligibility estimate
+    if is_jp_market:
+        eligibility = "no_jp_market"
+    elif locked_raw == "0":
+        eligibility = "already_unlocked"
+    elif manufacturer.lower() not in ("sony", "sonyericsson"):
+        eligibility = "not_sony"
+    else:
+        eligibility = "check_sony_site"
+
+    return {
+        "model": model,
+        "device": device,
+        "manufacturer": manufacturer,
+        "build_type": build_type,
+        "locked": locked_raw == "1",
+        "locked_raw": locked_raw or "unknown",
+        "verified_boot_state": verified or "unknown",
+        "oem_unlock_disallowed": oem_disallowed,
+        "is_jp_market": is_jp_market,
+        "eligibility": eligibility,
+        "sony_unlock_url": "https://developer.sony.com/develop/open-devices/get-started/unlock-bootloader/",
+        "imei_dial_code": "*#06#",
+    }
+
+
+@app.get("/api/apn-list")
+def apn_list():
+    return _load_json("vn_apn.json")
+
+
+@app.post("/api/apn-open-settings")
+def apn_open_settings(serial: str | None = None):
+    """Mở APN settings activity trên máy để user nhập tay."""
+    try:
+        adb.shell("am start -a android.settings.APN_SETTINGS", serial=serial, timeout=15)
+        return {"ok": True, "message": "Đã mở APN settings trên máy. Bấm + để thêm APN mới."}
+    except adb.AdbError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
 @app.post("/api/reboot")
 def reboot(serial: str | None = None):
     try:

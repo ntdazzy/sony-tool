@@ -1,0 +1,114 @@
+{
+  "_comment": "APN config cho 4 nhà mạng VN. Sony JP không preload nên user phải nhập tay khi dùng SIM Việt.",
+  "carriers": [
+    {
+      "id": "viettel",
+      "name": "Viettel",
+      "icon": "🟢",
+      "note": "MCC 452 / MNC 04. Phổ biến nhất VN.",
+      "settings": {
+        "Tên (Name)": "Viettel Internet",
+        "APN": "v-internet",
+        "Proxy": "Để trống",
+        "Cổng (Port)": "Để trống",
+        "Tên người dùng (Username)": "Để trống",
+        "Mật khẩu (Password)": "Để trống",
+        "Máy chủ (Server)": "Để trống",
+        "MMSC": "http://mms.viettelmobile.com.vn/mms/wapenc",
+        "Proxy MMS": "192.168.233.10",
+        "Cổng MMS": "8080",
+        "MCC": "452",
+        "MNC": "04",
+        "Kiểu xác thực (Auth type)": "Không (None)",
+        "Loại APN (APN type)": "default,supl,mms",
+        "Giao thức APN (APN protocol)": "IPv4/IPv6",
+        "Giao thức APN roaming": "IPv4/IPv6"
+      }
+    },
+    {
+      "id": "vinaphone",
+      "name": "Vinaphone",
+      "icon": "🔵",
+      "note": "MCC 452 / MNC 02.",
+      "settings": {
+        "Tên (Name)": "Vinaphone Internet",
+        "APN": "m3-world",
+        "Proxy": "Để trống",
+        "Cổng (Port)": "Để trống",
+        "Tên người dùng (Username)": "mms",
+        "Mật khẩu (Password)": "mms",
+        "Máy chủ (Server)": "Để trống",
+        "MMSC": "http://mmsc.vinaphone.com.vn",
+        "Proxy MMS": "10.1.10.46",
+        "Cổng MMS": "8000",
+        "MCC": "452",
+        "MNC": "02",
+        "Kiểu xác thực (Auth type)": "Không (None)",
+        "Loại APN (APN type)": "default,supl,mms",
+        "Giao thức APN (APN protocol)": "IPv4/IPv6"
+      }
+    },
+    {
+      "id": "mobifone",
+      "name": "Mobifone",
+      "icon": "🟣",
+      "note": "MCC 452 / MNC 01.",
+      "settings": {
+        "Tên (Name)": "Mobifone Internet",
+        "APN": "m-i-internet",
+        "Proxy": "Để trống",
+        "Cổng (Port)": "Để trống",
+        "Tên người dùng (Username)": "mms",
+        "Mật khẩu (Password)": "mms",
+        "Máy chủ (Server)": "Để trống",
+        "MMSC": "http://203.162.21.114/mmsc",
+        "Proxy MMS": "203.162.21.107",
+        "Cổng MMS": "8080",
+        "MCC": "452",
+        "MNC": "01",
+        "Kiểu xác thực (Auth type)": "Không (None)",
+        "Loại APN (APN type)": "default,supl,mms",
+        "Giao thức APN (APN protocol)": "IPv4/IPv6"
+      }
+    },
+    {
+      "id": "vietnamobile",
+      "name": "Vietnamobile",
+      "icon": "🟠",
+      "note": "MCC 452 / MNC 05.",
+      "settings": {
+        "Tên (Name)": "Vietnamobile Internet",
+        "APN": "internet",
+        "Proxy": "Để trống",
+        "Cổng (Port)": "Để trống",
+        "Tên người dùng (Username)": "Để trống",
+        "Mật khẩu (Password)": "Để trống",
+        "Máy chủ (Server)": "Để trống",
+        "MMSC": "http://mmsc.vietnamobile.com.vn/mms",
+        "Proxy MMS": "Để trống",
+        "Cổng MMS": "Để trống",
+        "MCC": "452",
+        "MNC": "05",
+        "Kiểu xác thực (Auth type)": "Không (None)",
+        "Loại APN (APN type)": "default,supl,mms",
+        "Giao thức APN (APN protocol)": "IPv4/IPv6"
+      }
+    }
+  ],
+  "instructions": {
+    "title": "Cách thêm APN trên Sony Xperia nội địa Nhật",
+    "steps": [
+      "Cài đặt → Mạng và internet → SIM → SIM của bạn → APN",
+      "Bấm dấu + (Add new APN) ở góc trên phải",
+      "Nhập đúng từng trường theo bảng dưới (Tên + APN + MMS settings là bắt buộc)",
+      "Bấm 3 chấm góc trên phải → Lưu (Save)",
+      "Quay lại danh sách APN → chọn APN vừa tạo (chấm tròn đầu dòng)",
+      "Khởi động lại máy → 4G sẽ hoạt động"
+    ],
+    "tips": [
+      "Nếu không thấy 4G: vào Cài đặt → SIM → bật 'Roaming dữ liệu'",
+      "Nếu không gửi được MMS: kiểm tra lại MMSC + Proxy MMS",
+      "Một số máy JP có thể chặn band 4G của VN — check IMEI ở https://www.imei.info/"
+    ]
+  }
+}
