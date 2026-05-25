@@ -1915,6 +1915,34 @@ $("#btn-flash-wiz-close")?.addEventListener("click", () => {
 });
 $("#btn-flash-done-close")?.addEventListener("click", closeFlashWizard);
 
+$("#btn-flash-done-cleanup")?.addEventListener("click", async () => {
+  if (!FLASH.romDir) {
+    toast("Không biết folder ROM đã tải", "warn");
+    return;
+  }
+  openModal({
+    title: "Xoá ROM đã tải?",
+    body: `<p>Xoá folder:</p>
+           <p><code style="font-size:11px;word-break:break-all">${FLASH.romDir}</code></p>
+           <p>Giải phóng ~2-3 GB. Nếu muốn flash lại version này phải tải lại từ đầu.</p>`,
+    confirmText: "🗑️ Xoá",
+    confirmClass: "btn-danger",
+    onConfirm: async () => {
+      try {
+        const r = await api("/api/rom/downloads/delete", {
+          method: "POST",
+          body: JSON.stringify({ path: FLASH.romDir }),
+        });
+        toast(`✓ Đã xoá ROM`, "success");
+        logEntry(`🗑️ Xoá ROM folder: ${r.deleted}`, "success");
+        $("#btn-flash-done-cleanup").hidden = true;
+      } catch (e) {
+        toast("Xoá lỗi: " + e.message, "error");
+      }
+    },
+  });
+});
+
 // ---------- init ----------
 
 (async function init() {

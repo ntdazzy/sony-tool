@@ -28,7 +28,8 @@ logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).parent
 VENDOR_DIR = ROOT / "vendor"
-NEWFLASHER_EXE = VENDOR_DIR / "newflasher.exe"
+# Windows dùng newflasher.exe, Mac/Linux dùng newflasher (không extension).
+NEWFLASHER_EXE = VENDOR_DIR / ("newflasher.exe" if os.name == "nt" else "newflasher")
 
 # Pattern detect output từ newflasher (đoán theo XDA discussion + source code)
 _RE_FLASHING = re.compile(r"(?:flashing|writing|sending)\s+(.+?)(?:\.\.\.|\s*$)", re.IGNORECASE)

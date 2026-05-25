@@ -938,6 +938,56 @@ def rom_flash_cancel(job_id: str):
     return {"ok": True}
 
 
+# ============ ROM downloads management ============
+
+
+@app.get("/api/rom/downloads/list")
+def rom_downloads_list():
+    """List các folder ROM đã tải về."""
+    dl_dir = ROOT / "vendor" / "rom_downloads"
+    if not dl_dir.exists():
+        return {"downloads": []}
+    out = []
+    for d in sorted(dl_dir.iterdir(), reverse=True):
+        if not d.is_dir():
+            continue
+        files = list(d.iterdir())
+        total_bytes = sum(f.stat().st_size for f in files if f.is_file())
+        out.append({
+            "name": d.name,
+            "path": str(d),
+            "file_count": sum(1 for f in files if f.is_file()),
+            "total_bytes": total_bytes,
+            "total_mb": round(total_bytes / 1024 / 1024, 1),
+        })
+    return {"downloads": out}
+
+
+class RomDeletePath(BaseModel):
+    path: str
+
+
+@app.post("/api/rom/downloads/delete")
+def rom_downloads_delete(req: RomDeletePath):
+    """Xoá 1 folder ROM (must nằm trong vendor/rom_downloads/)."""
+    import shutil as _shutil
+    target = Path(req.path).resolve()
+    allowed_base = (ROOT / "vendor" / "rom_downloads").resolve()
+    try:
+        target.relative_to(allowed_base)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"path phải trong {allowed_base}")
+    if not target.exists():
+        raise HTTPException(status_code=404, detail=f"Folder không tồn tại: {target}")
+    if not target.is_dir():
+        raise HTTPException(status_code=400, detail="path phải là folder")
+    try:
+        _shutil.rmtree(target)
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Xoá thất bại: {e}") from e
+    return {"ok": True, "deleted": str(target)}
+
+
 @app.post("/api/rom/refresh-resources")
 def rom_refresh_resources():
     """Force refresh XperiFirm resources cache (bypass 7-day TTL).

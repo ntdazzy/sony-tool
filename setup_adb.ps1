@@ -90,26 +90,49 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "[OK] Python deps installed" -ForegroundColor Green
 
-# 5. Create vendor folder + check newflasher.exe (for ROM flashing)
+# 5. Auto-download newflasher.exe (MIT license, for ROM flashing feature)
+# Source: github.com/puksh/newflasher - community fork rebuilds Munjeni's upstream
+# with prebuilt assets. v59 matches Munjeni source tag v59.
 $vendorDir = Join-Path $scriptDir "vendor"
 if (-not (Test-Path $vendorDir)) {
     New-Item -ItemType Directory -Path $vendorDir | Out-Null
 }
 $newflasher = Join-Path $vendorDir "newflasher.exe"
-if (-not (Test-Path $newflasher)) {
-    Write-Host ""
-    Write-Host "[INFO] Optional: newflasher.exe missing (only needed for ROM flashing)" -ForegroundColor Yellow
-    Write-Host "        Tool van chay duoc cho debloat/optimize. Khi muon dung tinh nang"
-    Write-Host "        cai ROM, tai newflasher.exe va dat vao:"
-    Write-Host "          $newflasher"
-    Write-Host ""
-    Write-Host "        Source code (MIT license):"
-    Write-Host "          https://github.com/munjeni/newflasher"
-    Write-Host "        Prebuilt binary (XDA community):"
-    Write-Host "          https://xdaforums.com/t/tool-newflasher-xperia-command-line-flasher.3619426/"
-    Write-Host ""
+$nfUrl = "https://github.com/puksh/newflasher/releases/download/v59/newflasher.exe"
+$nfSha256 = "D859F3D9F9D6CAB5579C3F1AE516727F6EC94C008DC083140F3BA990F3A2F37D"
+
+function Test-NewflasherHash {
+    param([string]$path, [string]$expected)
+    if (-not (Test-Path $path)) { return $false }
+    $actual = (Get-FileHash -Path $path -Algorithm SHA256).Hash
+    return ($actual -eq $expected)
+}
+
+if (Test-NewflasherHash -path $newflasher -expected $nfSha256) {
+    Write-Host "[OK] newflasher.exe ready (SHA256 verified): $newflasher" -ForegroundColor Green
 } else {
-    Write-Host "[OK] newflasher.exe ready: $newflasher" -ForegroundColor Green
+    if (Test-Path $newflasher) {
+        Write-Host "[WARN] newflasher.exe SHA256 mismatch, redownloading..." -ForegroundColor Yellow
+        Remove-Item $newflasher -Force
+    }
+    Write-Host "[..] Downloading newflasher.exe (3.2 MB) from puksh/newflasher v59..."
+    try {
+        Invoke-WebRequest -Uri $nfUrl -OutFile $newflasher -UseBasicParsing -TimeoutSec 60
+        if (Test-NewflasherHash -path $newflasher -expected $nfSha256) {
+            Write-Host "[OK] newflasher.exe downloaded + SHA256 verified" -ForegroundColor Green
+        } else {
+            Write-Host "[ERROR] SHA256 mismatch after download. Expected $nfSha256" -ForegroundColor Red
+            Write-Host "        Got      $((Get-FileHash -Path $newflasher -Algorithm SHA256).Hash)"
+            Write-Host "        Possible: upstream binary changed, or download corrupted."
+            Remove-Item $newflasher -Force -ErrorAction SilentlyContinue
+            Write-Host "[WARN] ROM flash feature will not work without newflasher.exe" -ForegroundColor Yellow
+        }
+    } catch {
+        Write-Host "[WARN] Download failed: $_" -ForegroundColor Yellow
+        Write-Host "        ROM flash feature van chua su dung duoc."
+        Write-Host "        Manual: tai newflasher.exe roi dat vao $newflasher"
+        Write-Host "        Source code (MIT): https://github.com/munjeni/newflasher"
+    }
 }
 
 Write-Host ""

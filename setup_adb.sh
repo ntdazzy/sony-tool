@@ -37,6 +37,33 @@ echo "📦 Cài Python dependencies..."
 ./.venv/bin/pip install -q -r requirements.txt
 echo "✅ Python deps đã sẵn sàng"
 
+# Auto-download newflasher binary (MIT license, github.com/puksh/newflasher)
+mkdir -p "$SCRIPT_DIR/vendor"
+case "$(uname -s)" in
+  Darwin) NF_URL="https://github.com/puksh/newflasher/releases/download/v59/newflasher-macos"
+          NF_PATH="$SCRIPT_DIR/vendor/newflasher" ;;
+  Linux)  ARCH=$(uname -m)
+          if [ "$ARCH" = "x86_64" ]; then
+            NF_URL="https://github.com/puksh/newflasher/releases/download/v59/newflasher.x64"
+          else
+            NF_URL="https://github.com/puksh/newflasher/releases/download/v59/newflasher.i386"
+          fi
+          NF_PATH="$SCRIPT_DIR/vendor/newflasher" ;;
+  *) NF_URL=""; NF_PATH="" ;;
+esac
+
+if [ -n "$NF_URL" ] && [ ! -f "$NF_PATH" ]; then
+  echo "📥 Tải newflasher (ROM flash binary, MIT license)..."
+  if curl -L -o "$NF_PATH" "$NF_URL" 2>/dev/null; then
+    chmod +x "$NF_PATH"
+    echo "✅ newflasher: $NF_PATH"
+  else
+    echo "⚠️  Tải newflasher fail — ROM flash sẽ chưa dùng được. Tải tay từ github.com/munjeni/newflasher"
+  fi
+elif [ -f "$NF_PATH" ]; then
+  echo "✅ newflasher đã có: $NF_PATH"
+fi
+
 echo ""
 echo "================================================"
 echo "✅ Setup xong. Bước tiếp theo:"
