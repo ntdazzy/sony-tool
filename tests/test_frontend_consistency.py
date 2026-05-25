@@ -92,24 +92,30 @@ def test_css_pkg_tag_classes_present():
 
 
 def test_html_has_required_element_ids():
-    """JS query các id — HTML phải define. Bỏ qua template literals."""
+    """JS query các id — HTML phải define. Bỏ qua optional chaining (?.) và template literals."""
     html = _read(STATIC / "index.html")
     js = _read(STATIC / "app.js")
 
-    # Chỉ match $('#xxx') với selector tĩnh (không template literal có ${})
     # Pattern: $('#abc'), $("#abc"), $(`#abc`) — không match `#stat-${k}`
-    js_ids = set(re.findall(r'\$\(\s*["\']#([a-z][a-z0-9_-]*)["\']\s*\)', js))
+    js_ids = set(re.findall(r'\$\(\s*["\']#([a-z][a-z0-9_-]*)["\']\s*\)(?!\?)', js))
     # Template literals: bỏ qua nếu chứa ${
-    template_ids = re.findall(r'\$\(\s*`#([a-z][a-z0-9_-]*)`\s*\)', js)
+    template_ids = re.findall(r'\$\(\s*`#([a-z][a-z0-9_-]*)`\s*\)(?!\?)', js)
     js_ids.update(template_ids)
-    js_ids.update(re.findall(r'getElementById\(\s*["\']([a-z][a-z0-9_-]*)["\']', js))
+    # getElementById('xxx') — không phải optional chaining
+    js_ids.update(re.findall(r'getElementById\(\s*["\']([a-z][a-z0-9_-]*)["\']\s*\)(?!\?)', js))
+
+    # Bỏ các selector dùng optional chaining (?.) — code đã handle null
+    optional_ids = set()
+    optional_ids.update(re.findall(r'\$\(\s*["\']#([a-z][a-z0-9_-]*)["\']\s*\)\?\.', js))
+    optional_ids.update(re.findall(r'\$\(\s*`#([a-z][a-z0-9_-]*)`\s*\)\?\.', js))
+    js_ids -= optional_ids
 
     missing = []
     for jid in js_ids:
         if f'id="{jid}"' not in html and f"id='{jid}'" not in html:
             missing.append(jid)
 
-    assert missing == [], f"HTML thiếu id mà JS query: {missing}"
+    assert missing == [], f"HTML thiếu id mà JS query (không optional): {missing}"
 
 
 def test_html_all_tab_panels_have_matching_buttons():

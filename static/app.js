@@ -648,7 +648,8 @@ $("#btn-do-cleanup").addEventListener("click", async () => {
   });
 });
 
-$("#btn-hero-cleanup").addEventListener("click", () => {
+// (Hero "Bắt đầu dọn sạch" button removed in v2 redesign — cleanup tab is now reached via top nav)
+$("#btn-hero-cleanup")?.addEventListener("click", () => {
   $$(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === "cleanup"));
   $$(".tab-panel").forEach(p => p.classList.toggle("active", p.id === "tab-cleanup"));
   refreshCleanupPreview();
