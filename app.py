@@ -836,6 +836,108 @@ def rom_download_cancel(job_id: str):
     return {"ok": True}
 
 
+# ============ Flash Mode detection + Flash runner ============
+
+
+@app.get("/api/rom/flash-mode/scan")
+def rom_flash_mode_scan():
+    """1-shot scan USB tìm Sony device + xác định có ở Flash Mode không.
+    Frontend poll endpoint này hoặc gọi 1 lần để check trước khi enable nút Flash."""
+    import flash_mode_detect
+    return flash_mode_detect.scan().to_dict()
+
+
+@app.get("/api/rom/flash/check-newflasher")
+def rom_check_newflasher():
+    """Check newflasher.exe có sẵn không + path nếu có."""
+    import flash_runner
+    path = flash_runner.newflasher_path()
+    return {
+        "available": path is not None,
+        "path": str(path) if path else None,
+        "expected_path": str(flash_runner.NEWFLASHER_EXE),
+        "github_url": "https://github.com/munjeni/newflasher",
+        "xda_url": "https://xdaforums.com/t/tool-newflasher-xperia-command-line-flasher.3619426/",
+    }
+
+
+class FlashStart(BaseModel):
+    rom_dir: str  # absolute path đến folder chứa .sin files
+
+
+@app.post("/api/rom/flash/start")
+def rom_flash_start(req: FlashStart):
+    """Spawn newflasher subprocess trên rom_dir. Trả job_id."""
+    import flash_runner
+
+    rom_path = Path(req.rom_dir).resolve()
+    # Safety: chỉ cho phép path nằm trong vendor/rom_downloads/
+    allowed_base = (ROOT / "vendor" / "rom_downloads").resolve()
+    try:
+        rom_path.relative_to(allowed_base)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"rom_dir phải trong {allowed_base}")
+
+    if not rom_path.exists() or not rom_path.is_dir():
+        raise HTTPException(status_code=404, detail=f"rom_dir không tồn tại: {rom_path}")
+
+    if not flash_runner.newflasher_available():
+        raise HTTPException(
+            status_code=400,
+            detail=f"newflasher.exe chưa có. Đặt vào {flash_runner.NEWFLASHER_EXE} (tải từ Github Munjeni)"
+        )
+
+    # Verify máy đang ở Flash Mode
+    import flash_mode_detect
+    result = flash_mode_detect.scan()
+    if result.available and not result.flash_mode_device:
+        raise HTTPException(
+            status_code=400,
+            detail="Máy chưa ở Flash Mode. Tắt máy → giữ Vol Down → cắm USB → đợi LED xanh sáng."
+        )
+    # Nếu pyusb không available, vẫn cho phép start (user xác nhận manual)
+
+    job = flash_runner.start_flash_job(rom_path)
+    return {"job_id": job.job_id}
+
+
+@app.get("/api/rom/flash/stream")
+def rom_flash_stream(job_id: str):
+    """SSE stream progress flash."""
+    import json as _json
+    import flash_runner
+
+    job = flash_runner.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Flash job {job_id} không tồn tại")
+
+    def event_gen():
+        while True:
+            try:
+                item = job.progress_queue.get(timeout=1.0)
+            except Exception:
+                if not job.thread.is_alive():
+                    break
+                yield ": heartbeat\n\n"
+                continue
+            yield f"data: {_json.dumps(item)}\n\n"
+            if item.get("state") in ("done", "error", "cancelled"):
+                break
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+    })
+
+
+@app.post("/api/rom/flash/cancel/{job_id}")
+def rom_flash_cancel(job_id: str):
+    import flash_runner
+    if not flash_runner.cancel_job(job_id):
+        raise HTTPException(status_code=404, detail=f"Job {job_id} không tồn tại")
+    return {"ok": True}
+
+
 @app.post("/api/rom/refresh-resources")
 def rom_refresh_resources():
     """Force refresh XperiFirm resources cache (bypass 7-day TTL).
