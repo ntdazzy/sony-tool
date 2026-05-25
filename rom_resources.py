@@ -39,6 +39,10 @@ CACHE_DIR = ROOT / "vendor" / "rom_cache"
 RESOURCES_XML = CACHE_DIR / "resources.xml"
 RESOURCES_META = CACHE_DIR / "resources.meta.json"
 
+# Lock cho fetch_resources — chống race khi nhiều request /api/rom/device đồng thời.
+import threading as _threading
+_RESOURCES_LOCK = _threading.Lock()
+
 
 # ============ Decryption (port XperiFirm 5.8.1) ============
 
@@ -131,28 +135,37 @@ def _download_raw(timeout: int = 30) -> bytes:
 
 def fetch_resources(force_refresh: bool = False) -> bytes:
     """Lấy resources XML — đọc từ cache nếu còn hợp lệ, ngược lại tải mới.
-    Trả về XML bytes (đã decrypt + decompress)."""
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    Trả về XML bytes (đã decrypt + decompress).
 
-    if not force_refresh and RESOURCES_XML.exists() and RESOURCES_META.exists():
-        try:
-            meta = json.loads(RESOURCES_META.read_text(encoding="utf-8"))
-            age = time.time() - meta.get("fetched_at", 0)
-            if age < CACHE_TTL_SECONDS:
-                logger.info("Using cached resources (%.0f hours old)", age / 3600)
-                return RESOURCES_XML.read_bytes()
-        except (json.JSONDecodeError, OSError):
-            logger.warning("Cache meta corrupt, refetching")
+    Thread-safe: dùng _RESOURCES_LOCK để chống concurrent write race
+    (vd: 2 request /api/rom/device gọi cùng lúc khi cache hết hạn)."""
+    with _RESOURCES_LOCK:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-    raw = _download_raw()
-    xml_bytes = _decrypt(raw)
-    RESOURCES_XML.write_bytes(xml_bytes)
-    RESOURCES_META.write_text(
-        json.dumps({"fetched_at": time.time(), "raw_size": len(raw), "xml_size": len(xml_bytes)}),
-        encoding="utf-8",
-    )
-    logger.info("Resources cached: %d bytes XML", len(xml_bytes))
-    return xml_bytes
+        if not force_refresh and RESOURCES_XML.exists() and RESOURCES_META.exists():
+            try:
+                meta = json.loads(RESOURCES_META.read_text(encoding="utf-8"))
+                age = time.time() - meta.get("fetched_at", 0)
+                if age < CACHE_TTL_SECONDS:
+                    logger.info("Using cached resources (%.0f hours old)", age / 3600)
+                    return RESOURCES_XML.read_bytes()
+            except (json.JSONDecodeError, OSError):
+                logger.warning("Cache meta corrupt, refetching")
+
+        raw = _download_raw()
+        xml_bytes = _decrypt(raw)
+        # Write atomic: write to .tmp rồi rename, tránh partial file nếu crash giữa chừng
+        tmp_xml = RESOURCES_XML.with_suffix(".xml.tmp")
+        tmp_meta = RESOURCES_META.with_suffix(".json.tmp")
+        tmp_xml.write_bytes(xml_bytes)
+        tmp_meta.write_text(
+            json.dumps({"fetched_at": time.time(), "raw_size": len(raw), "xml_size": len(xml_bytes)}),
+            encoding="utf-8",
+        )
+        tmp_xml.replace(RESOURCES_XML)
+        tmp_meta.replace(RESOURCES_META)
+        logger.info("Resources cached: %d bytes XML", len(xml_bytes))
+        return xml_bytes
 
 
 # ============ Parse ============

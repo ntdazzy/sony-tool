@@ -66,6 +66,18 @@ document.addEventListener("DOMContentLoaded", () => {
 const $ = sel => document.querySelector(sel);
 const $$ = sel => Array.from(document.querySelectorAll(sel));
 
+// HTML-escape — dùng cho mọi text từ backend / device props khi inject vào innerHTML.
+// Tránh XSS qua tên model lạ, error message chứa <script>, package name shenanigans.
+function esc(s) {
+  if (s === null || s === undefined) return "";
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function toast(msg, type = "info") {
   const el = document.createElement("div");
   el.className = `toast-item ${type}`;
@@ -263,16 +275,16 @@ async function refreshStatus() {
     const info = data.device_info || {};
     $("#device-info").innerHTML = `
       <table>
-        <tr><td>Hãng / Model</td><td><b>${info.manufacturer || "-"} ${info.model || "-"}</b></td></tr>
-        <tr><td>Mã thiết bị</td><td><code>${info.device || "-"}</code></td></tr>
-        <tr><td>Android</td><td>${info.android_version || "-"} (SDK ${info.sdk || "-"})</td></tr>
-        <tr><td>Build</td><td><code>${info.build || "-"}</code></td></tr>
-        <tr><td>Serial</td><td><code>${data.active_serial}</code></td></tr>
+        <tr><td>Hãng / Model</td><td><b>${esc(info.manufacturer || "-")} ${esc(info.model || "-")}</b></td></tr>
+        <tr><td>Mã thiết bị</td><td><code>${esc(info.device || "-")}</code></td></tr>
+        <tr><td>Android</td><td>${esc(info.android_version || "-")} (SDK ${esc(info.sdk || "-")})</td></tr>
+        <tr><td>Build</td><td><code>${esc(info.build || "-")}</code></td></tr>
+        <tr><td>Serial</td><td><code>${esc(data.active_serial)}</code></td></tr>
       </table>
     `;
   } catch (e) {
     $("#status .status-text").textContent = "Lỗi: " + e.message;
-    $("#device-info").innerHTML = `<p style="color: var(--danger)">${e.message}</p>`;
+    $("#device-info").innerHTML = `<p style="color: var(--danger)">${esc(e.message)}</p>`;
   }
 }
 
@@ -866,7 +878,7 @@ async function loadPresets() {
     // Load state ngay nếu có device
     if (STATE.serial) loadPresetStates();
   } catch (e) {
-    $("#presets-list").innerHTML = `<p style="color: var(--danger)">Lỗi: ${e.message}</p>`;
+    $("#presets-list").innerHTML = `<p style="color: var(--danger)">Lỗi: ${esc(e.message)}</p>`;
   }
 }
 
@@ -986,7 +998,7 @@ async function loadBackups() {
       <p class="muted" style="margin-top:10px">File lưu trong <code>~/Desktop/sony-tool/backups/</code></p>
     `;
   } catch (e) {
-    $("#backup-list").innerHTML = `<p style="color: var(--danger)">Lỗi: ${e.message}</p>`;
+    $("#backup-list").innerHTML = `<p style="color: var(--danger)">Lỗi: ${esc(e.message)}</p>`;
   }
 }
 
@@ -1159,7 +1171,7 @@ async function loadApnData() {
     try {
       APN_DATA = await api("/api/apn-list");
     } catch (e) {
-      $("#apn-config").innerHTML = `<p style="color:var(--danger)">Lỗi tải APN data: ${e.message}</p>`;
+      $("#apn-config").innerHTML = `<p style="color:var(--danger)">Lỗi tải APN data: ${esc(e.message)}</p>`;
       return;
     }
   }
@@ -1271,12 +1283,12 @@ async function checkBootloader() {
     $("#bootloader-result").innerHTML = `
       <div class="device-info" style="margin-top:14px">
         <table>
-          <tr><td>Model</td><td><b>${d.model || "—"}</b></td></tr>
-          <tr><td>Device code</td><td><code>${d.device || "—"}</code></td></tr>
-          <tr><td>Manufacturer</td><td>${d.manufacturer || "—"}</td></tr>
-          <tr><td>Build type</td><td><code>${d.build_type || "—"}</code></td></tr>
-          <tr><td>Bootloader</td><td><b style="color:${d.locked ? "var(--danger)" : "var(--success)"}">${d.locked ? "🔒 LOCKED" : "🔓 UNLOCKED"}</b> <code class="muted">(${d.locked_raw})</code></td></tr>
-          <tr><td>Verified Boot State</td><td><b style="color:${vbsColor}">${d.verified_boot_state.toUpperCase()}</b></td></tr>
+          <tr><td>Model</td><td><b>${esc(d.model || "—")}</b></td></tr>
+          <tr><td>Device code</td><td><code>${esc(d.device || "—")}</code></td></tr>
+          <tr><td>Manufacturer</td><td>${esc(d.manufacturer || "—")}</td></tr>
+          <tr><td>Build type</td><td><code>${esc(d.build_type || "—")}</code></td></tr>
+          <tr><td>Bootloader</td><td><b style="color:${d.locked ? "var(--danger)" : "var(--success)"}">${d.locked ? "🔒 LOCKED" : "🔓 UNLOCKED"}</b> <code class="muted">(${esc(d.locked_raw)})</code></td></tr>
+          <tr><td>Verified Boot State</td><td><b style="color:${vbsColor}">${esc((d.verified_boot_state || "").toUpperCase())}</b></td></tr>
           <tr><td>OEM unlock allowed</td><td>${d.oem_unlock_disallowed === "0" ? "✓ Cho phép" : d.oem_unlock_disallowed === "1" ? "✗ Bị cấm (carrier-locked)" : "—"}</td></tr>
           <tr><td>JP market?</td><td>${d.is_jp_market ? "🇯🇵 Có" : "🌐 Không"}</td></tr>
         </table>
@@ -1293,7 +1305,7 @@ async function checkBootloader() {
       ` : ""}
     `;
   } catch (e) {
-    $("#bootloader-result").innerHTML = `<p style="color:var(--danger);margin-top:12px">Lỗi: ${e.message}</p>`;
+    $("#bootloader-result").innerHTML = `<p style="color:var(--danger);margin-top:12px">Lỗi: ${esc(e.message)}</p>`;
     logEntry(`🔓 Bootloader check lỗi: ${e.message}`, "error");
   }
 }
@@ -1318,12 +1330,12 @@ async function detectRomDevice() {
     if (!d.supported) {
       $("#rom-device-result").innerHTML = `
         <table>
-          <tr><td>Model</td><td><b>${d.model_name || "—"}</b></td></tr>
-          <tr><td>Build hiện tại</td><td><code>${d.current_build || "—"}</code></td></tr>
-          <tr><td>Customization code</td><td><code>${d.device_cust_number || "—"}</code></td></tr>
-          <tr><td>SPC</td><td><code>${d.device_spcode || "—"}</code></td></tr>
+          <tr><td>Model</td><td><b>${esc(d.model_name || "—")}</b></td></tr>
+          <tr><td>Build hiện tại</td><td><code>${esc(d.current_build || "—")}</code></td></tr>
+          <tr><td>Customization code</td><td><code>${esc(d.device_cust_number || "—")}</code></td></tr>
+          <tr><td>SPC</td><td><code>${esc(d.device_spcode || "—")}</code></td></tr>
         </table>
-        <div class="warn" style="margin-top:14px">⚠️ ${d.message || "Model chưa support."}</div>
+        <div class="warn" style="margin-top:14px">⚠️ ${esc(d.message || "Model chưa support.")}</div>
       `;
       logEntry(`📱 ROM: model ${d.model_name} chưa có trong database`, "warn");
       return;
@@ -1332,16 +1344,16 @@ async function detectRomDevice() {
     const m = d.model;
     const custList = m.customizations.map(c => {
       const isAuto = c.id === d.auto_cust_id;
-      return `<li>${isAuto ? "✓ " : ""}<b>${c.name}</b> — SPC <code>${c.spc || "—"}</code>${isAuto ? " <span class='muted'>(khớp máy của bạn)</span>" : ""}</li>`;
+      return `<li>${isAuto ? "✓ " : ""}<b>${esc(c.name)}</b> — SPC <code>${esc(c.spc || "—")}</code>${isAuto ? " <span class='muted'>(khớp máy của bạn)</span>" : ""}</li>`;
     }).join("");
 
     $("#rom-device-result").innerHTML = `
       <table>
-        <tr><td>Model</td><td><b>${m.name}</b></td></tr>
-        <tr><td>Product code</td><td><code>${m.product_name}</code></td></tr>
-        <tr><td>Group</td><td>${m.group_name}</td></tr>
-        <tr><td>Build hiện tại</td><td><code>${d.current_build || "—"}</code></td></tr>
-        <tr><td>Customization của máy</td><td><code>${d.device_cust_number || "—"}</code> (SPC <code>${d.device_spcode || "—"}</code>)</td></tr>
+        <tr><td>Model</td><td><b>${esc(m.name)}</b></td></tr>
+        <tr><td>Product code</td><td><code>${esc(m.product_name)}</code></td></tr>
+        <tr><td>Group</td><td>${esc(m.group_name)}</td></tr>
+        <tr><td>Build hiện tại</td><td><code>${esc(d.current_build || "—")}</code></td></tr>
+        <tr><td>Customization của máy</td><td><code>${esc(d.device_cust_number || "—")}</code> (SPC <code>${esc(d.device_spcode || "—")}</code>)</td></tr>
       </table>
       <p class="muted" style="margin-top:12px"><b>${m.customizations.length}</b> customization variant tồn tại cho model này:</p>
       <ul style="padding-left:20px;font-size:13px">${custList}</ul>
@@ -1349,7 +1361,7 @@ async function detectRomDevice() {
     $("#rom-firmware-card").hidden = false;
     logEntry(`📱 ROM: detected ${m.name} (${m.customizations.length} cust variants)`, "success");
   } catch (e) {
-    $("#rom-device-result").innerHTML = `<p style="color:var(--danger)">Lỗi: ${e.message}</p>`;
+    $("#rom-device-result").innerHTML = `<p style="color:var(--danger)">Lỗi: ${esc(e.message)}</p>`;
     logEntry(`📱 ROM detect lỗi: ${e.message}`, "error");
   }
 }
@@ -1370,7 +1382,10 @@ async function loadRomFirmwareList() {
 
     const html = data.results.map(r => {
       if (!r.ok) {
-        return `<div class="preset-warning" style="margin-top:8px">❌ ${r.cust_name}: ${r.device_problem}</div>`;
+        return `<div class="preset-warning" style="margin-top:8px">❌ ${esc(r.cust_name)}: ${esc(r.device_problem)}</div>`;
+      }
+      if (!r.entries || r.entries.length === 0) {
+        return `<div class="muted" style="margin-top:8px">📦 ${esc(r.cust_name)}: không có firmware</div>`;
       }
       // Group entries by version, show KEEP / WIPE per version
       const byVer = new Map();
@@ -1378,17 +1393,19 @@ async function loadRomFirmwareList() {
         if (!byVer.has(e.version)) byVer.set(e.version, []);
         byVer.get(e.version).push(e);
       }
-      const rows = [...byVer.entries()].map(([ver, entries]) => `
+      const rows = [...byVer.entries()].map(([ver, entries]) => {
+        const first = entries[0] || {};
+        return `
         <tr>
-          <td><b>${ver}</b>${entries[0].revision ? ` <span class="muted">-${entries[0].revision}</span>` : ""}</td>
-          <td>${entries[0].release_state}</td>
-          <td>${entries[0].android_update_type === "NA" ? "—" : entries[0].android_update_type}</td>
+          <td><b>${esc(ver)}</b>${first.revision ? ` <span class="muted">-${esc(first.revision)}</span>` : ""}</td>
+          <td>${esc(first.release_state || "—")}</td>
+          <td>${(!first.android_update_type || first.android_update_type === "NA") ? "—" : esc(first.android_update_type)}</td>
           <td>
             ${entries.map(e => `
               <button class="btn-sm btn-secondary"
                       data-rom-action="download"
-                      data-url="${e.download_url.replace(/"/g, "&quot;")}"
-                      data-version="${ver}"
+                      data-url="${esc(e.download_url || "")}"
+                      data-version="${esc(ver)}"
                       data-mode="${e.is_factory_reset ? 'wipe' : 'keep'}"
                       title="${e.is_factory_reset ? 'Cài lại sạch (factory reset)' : 'Giữ data hiện có'}">
                 ${e.is_factory_reset ? '🧹 Wipe' : '💾 Keep'}
@@ -1396,10 +1413,10 @@ async function loadRomFirmwareList() {
             `).join(" ")}
           </td>
         </tr>
-      `).join("");
+      `}).join("");
       return `
         <div style="margin-top:14px">
-          <h4 style="margin:0 0 6px 0">📦 ${r.cust_name} <span class="muted">(${byVer.size} version)</span></h4>
+          <h4 style="margin:0 0 6px 0">📦 ${esc(r.cust_name)} <span class="muted">(${byVer.size} version)</span></h4>
           <div class="table-wrap"><table>
             <thead><tr><th>Version</th><th>State</th><th>Android update</th><th>Mode flash</th></tr></thead>
             <tbody>${rows}</tbody>
@@ -1421,7 +1438,7 @@ async function loadRomFirmwareList() {
 
     logEntry(`📱 ROM: ${data.results.reduce((s, r) => s + r.entries.length, 0)} firmware entries`, "success");
   } catch (e) {
-    $("#rom-firmware-list").innerHTML = `<p style="color:var(--danger)">Lỗi: ${e.message}</p>`;
+    $("#rom-firmware-list").innerHTML = `<p style="color:var(--danger)">Lỗi: ${esc(e.message)}</p>`;
     logEntry(`📱 ROM list lỗi: ${e.message}`, "error");
   } finally {
     hideLoading();
@@ -1458,7 +1475,7 @@ function _updateRomDownloadUI(p) {
     return;
   }
   if (p.state === "error") {
-    wrap.innerHTML = `<p style="color:var(--danger)"><b>❌ Lỗi:</b> ${p.error || "Không rõ"}</p>`;
+    wrap.innerHTML = `<p style="color:var(--danger)"><b>❌ Lỗi:</b> ${esc(p.error || "Không rõ")}</p>`;
     return;
   }
   if (p.state === "cancelled") {
@@ -1469,8 +1486,8 @@ function _updateRomDownloadUI(p) {
     wrap.innerHTML = `
       <p style="color:var(--success);font-size:16px"><b>✅ Tải xong!</b></p>
       <p>ROM đã lưu vào:</p>
-      <p><code style="font-size:11px;word-break:break-all">${p.output_dir || "—"}</code></p>
-      <p class="muted">Bấm <b>Sang Flash</b> để vào wizard cài ROM (Day 3-4 sẽ làm phần đẹp).</p>
+      <p><code style="font-size:11px;word-break:break-all">${esc(p.output_dir || "—")}</code></p>
+      <p class="muted">Bấm <b>Sang Flash</b> để vào wizard cài ROM.</p>
     `;
     $("#btn-rom-dl-cancel").hidden = true;
     $("#btn-rom-dl-flash").hidden = false;
@@ -1483,7 +1500,7 @@ function _updateRomDownloadUI(p) {
   wrap.innerHTML = `
     <div style="margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;font-size:13px">
-        <span>${p.current_file || "…"}</span>
+        <span>${esc(p.current_file || "…")}</span>
         <span><b>${pct.toFixed(1)}%</b></span>
       </div>
       <div class="progress-bar" style="margin-top:6px"><div class="progress-fill" style="width:${pct}%"></div></div>
@@ -1501,6 +1518,11 @@ async function startRomDownload({ url, version, mode }) {
   if (!url) {
     toast("Không có URL download", "error");
     return;
+  }
+  // Close any previous EventSource — chống leak khi user click download mới khi job cũ chạy.
+  if (_romDownloadState.eventSource) {
+    _romDownloadState.eventSource.close();
+    _romDownloadState.eventSource = null;
   }
   const label = `${STATE.romDeviceInfo?.model?.name || "ROM"}_${version}_${mode}`;
   logEntry(`📥 Bắt đầu download ROM ${version} (${mode})`, "action");
@@ -1814,8 +1836,8 @@ function showFlashError(p) {
   $("#flash-done-title").textContent = "Flash lỗi";
   $("#flash-done-title").style.color = "var(--danger)";
   $("#flash-done-summary").innerHTML = `
-    <b style="color:var(--danger)">${p.error || "Không rõ lý do"}</b><br>
-    <span class="muted tiny">Exit code: ${p.exit_code ?? "—"}</span>
+    <b style="color:var(--danger)">${esc(p.error || "Không rõ lý do")}</b><br>
+    <span class="muted tiny">Exit code: ${esc(p.exit_code ?? "—")}</span>
   `;
   logEntry(`❌ Flash lỗi: ${p.error}`, "error");
 }

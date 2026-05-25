@@ -72,72 +72,79 @@ def test_json_files_read_with_utf8():
 # ============ Windows scripts exist ============
 
 
-def test_windows_scripts_exist():
-    assert (ROOT / "setup_adb.ps1").exists(), "setup_adb.ps1 thiếu"
-    assert (ROOT / "run.ps1").exists(), "run.ps1 thiếu"
+PS1_FILE = "sony-tool.ps1"  # merged single script (was setup_adb.ps1 + run.ps1)
 
 
-def test_setup_adb_ps1_downloads_platform_tools():
-    """Verify setup_adb.ps1 đúng URL Google + giải nén ra platform-tools/."""
-    src = _read(ROOT / "setup_adb.ps1")
+def test_windows_script_exists():
+    assert (ROOT / PS1_FILE).exists(), f"{PS1_FILE} thiếu"
+
+
+def test_ps1_downloads_platform_tools():
+    """sony-tool.ps1 đúng URL Google + giải nén ra platform-tools/."""
+    src = _read(ROOT / PS1_FILE)
     assert "platform-tools-latest-windows.zip" in src
     assert "dl.google.com" in src
     assert "Expand-Archive" in src
 
 
-def test_run_ps1_adds_platform_tools_to_path():
-    src = _read(ROOT / "run.ps1")
+def test_ps1_adds_platform_tools_to_path():
+    src = _read(ROOT / PS1_FILE)
     assert "platform-tools" in src
     assert "$env:PATH" in src or '$env:Path' in src
 
 
-def test_run_ps1_uses_windows_venv_path():
-    """Venv path Windows là .venv\\Scripts\\... (không phải bin/)."""
-    src = _read(ROOT / "run.ps1")
+def test_ps1_uses_windows_venv_path():
+    """Venv path Windows là .venv\\Scripts\\..."""
+    src = _read(ROOT / PS1_FILE)
     assert r".venv\Scripts" in src or '.venv/Scripts' in src
 
 
 def test_setup_uses_python_m_pip_not_pip_exe():
-    """Trên Windows, pip.exe bị lock khi tự chạy → self-upgrade fail.
-    Phải dùng `python.exe -m pip` để tránh ERROR misleading khi setup."""
-    src = _read(ROOT / "setup_adb.ps1")
-    assert "python.exe" in src and "-m pip" in src, (
-        "setup_adb.ps1 phải gọi pip qua `python.exe -m pip` (không phải pip.exe trực tiếp)"
-    )
-    # Đảm bảo có --disable-pip-version-check để bớt noise
+    """Phải dùng `python.exe -m pip` để tránh pip.exe lock self-upgrade."""
+    src = _read(ROOT / PS1_FILE)
+    assert "python.exe" in src and "-m pip" in src
     assert "--disable-pip-version-check" in src
 
 
 def test_setup_rejects_microsoft_store_python_alias():
-    """Win 10/11 default có python.exe stub trong WindowsApps trỏ tới Store.
-    Get-Command python tưởng là Python thật → script gọi --version thì alias
-    print error 'Python was not found' → user confused, không setup được.
-    Fix: skip command nếu path nằm trong WindowsApps + verify output match
-    pattern 'Python X.Y'."""
-    src = _read(ROOT / "setup_adb.ps1")
-    # Phải có check WindowsApps để skip alias
-    assert "WindowsApps" in src, (
-        "setup_adb.ps1 phải skip command có path trong \\WindowsApps\\ "
-        "(Microsoft Store alias) — nếu không user chưa cài Python thật sẽ fail"
-    )
-    # Phải verify output `--version` thật, không trust mỗi Get-Command
-    assert "Python \\d+\\.\\d+" in src or 'Python \\d' in src, (
-        "setup_adb.ps1 phải verify output --version match pattern 'Python X.Y' "
-        "trước khi chấp nhận"
-    )
-    # py.exe (Python Launcher) phải được thử TRƯỚC python.exe vì nó không bị aliased
+    """Skip Microsoft Store python.exe stub + verify --version output."""
+    src = _read(ROOT / PS1_FILE)
+    assert "WindowsApps" in src
+    assert "Python \\d+\\.\\d+" in src or 'Python \\d' in src
     py_idx = src.find('"py"')
     python_idx = src.find('"python"')
-    assert py_idx != -1 and python_idx != -1, "Phải thử cả py và python"
-    assert py_idx < python_idx, (
-        "Phải thử py.exe TRƯỚC python.exe (py.exe không bị Microsoft Store aliased)"
+    assert py_idx != -1 and python_idx != -1
+    assert py_idx < python_idx, "Try py.exe TRƯỚC python.exe"
+
+
+def test_ps1_keeps_window_open_on_error():
+    """Script phải Read-Host pause cuối path lỗi để user thấy lỗi gì,
+    KHÔNG silent close. Verify có ít nhất 2 Read-Host (1 cuối normal exit,
+    1 trong trap/Show-Error)."""
+    src = _read(ROOT / PS1_FILE)
+    read_host_count = src.count("Read-Host")
+    assert read_host_count >= 2, (
+        f"sony-tool.ps1 chỉ có {read_host_count} Read-Host — phải pause cả error path"
     )
+    # Phải có trap {} hoặc Show-Error function cho unhandled exceptions
+    assert "trap {" in src or "trap{" in src, (
+        "Cần global trap để bắt mọi error chưa handle"
+    )
+
+
+def test_ps1_auto_downloads_newflasher():
+    src = _read(ROOT / PS1_FILE)
+    assert "newflasher.exe" in src
+    assert "puksh/newflasher" in src
+    # SHA256 hardcoded để chống supply chain tamper
+    assert "D859F3D9F9D6CAB5579C3F1AE516727F6EC94C008DC083140F3BA990F3A2F37D" in src.upper() or \
+           "d859f3d9f9d6cab5579c3f1ae516727f6ec94c008dc083140f3ba990f3a2f37d" in src
 
 
 def test_ps1_files_are_ascii_only():
     """PowerShell 5.1 (Win10/11 default) đọc .ps1 không-BOM sai khi có Unicode →
     'string is missing the terminator' error. Bắt buộc ASCII thuần."""
-    for fname in ["setup_adb.ps1", "run.ps1"]:
+    for fname in [PS1_FILE]:
         path = ROOT / fname
         raw = path.read_bytes()
         non_ascii_bytes = [(i, b) for i, b in enumerate(raw) if b > 0x7F]
@@ -145,7 +152,7 @@ def test_ps1_files_are_ascii_only():
             preview = non_ascii_bytes[:5]
             raise AssertionError(
                 f"{fname} chứa byte non-ASCII tại offset {preview} — "
-                f"PowerShell 5.1 sẽ parse sai. Đổi sang ASCII (vd. ✅ → [OK], 'Cài đặt' → 'Settings')."
+                f"PowerShell 5.1 sẽ parse sai. Đổi sang ASCII (vd. ✅ → [OK])."
             )
 
 

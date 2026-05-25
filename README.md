@@ -27,16 +27,17 @@ chmod +x setup_adb.sh run.sh
 ```powershell
 git clone https://github.com/ntdazzy/sony-tool.git
 cd sony-tool
-.\setup_adb.ps1
+.\sony-tool.ps1
 ```
 
-Script tự tải ADB + tạo Python venv. Mất 1-2 phút.
+Lần đầu tự setup (ADB + Python venv + newflasher, ~1-2 phút) rồi mở browser.
+Lần sau chỉ chạy `.\sony-tool.ps1` → start ngay.
 
 ## Chạy
 
 ```bash
-./run.sh           # Mac/Linux
-.\run.ps1          # Windows
+./run.sh             # Mac/Linux
+.\sony-tool.ps1      # Windows (cùng script, auto-detect setup/run)
 ```
 
 Browser tự mở `http://localhost:8765`.

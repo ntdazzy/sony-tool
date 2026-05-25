@@ -792,6 +792,8 @@ def rom_download_start(req: RomDownloadStart):
     if not req.firmware_url.startswith("https://app.swup.update.sony.net/"):
         raise HTTPException(status_code=400, detail="firmware_url phải là URL Sony chính thức")
 
+    # Opportunistic cleanup job cũ (>1h, đã finish) để tránh memory leak.
+    ftf_builder.cleanup_finished_jobs()
     job = ftf_builder.start_download_job(req.firmware_url, req.label)
     return {"job_id": job.job_id, "output_dir": str(job.output_dir)}
 
@@ -898,6 +900,7 @@ def rom_flash_start(req: FlashStart):
         )
     # Nếu pyusb không available, vẫn cho phép start (user xác nhận manual)
 
+    flash_runner.cleanup_finished_jobs()
     job = flash_runner.start_flash_job(rom_path, flash_ta=req.flash_ta)
     return {"job_id": job.job_id}
 

@@ -99,6 +99,15 @@ class DownloadCancelled(Exception):
     pass
 
 
+def _emit(q: Queue, item: dict) -> None:
+    """Non-blocking emit — drop nếu queue full thay vì block worker thread.
+    Tránh deadlock khi SSE client chậm hoặc disconnect."""
+    try:
+        q.put_nowait(item)
+    except Exception:
+        logger.debug("Queue full, drop event")
+
+
 # ============ HTTP helpers ============
 
 
@@ -246,20 +255,20 @@ def download_firmware(
     Trả về output_dir khi xong."""
     output_dir.mkdir(parents=True, exist_ok=True)
     progress = DownloadProgress(job_id=job_id, state="list_files", output_dir=str(output_dir))
-    progress_queue.put(progress.to_dict())
+    _emit(progress_queue, progress.to_dict())
 
     try:
         files = fetch_file_list(firmware_url)
     except Exception as e:
         progress.state = "error"
         progress.error = f"Không lấy được danh sách file: {e}"
-        progress_queue.put(progress.to_dict())
+        _emit(progress_queue, progress.to_dict())
         raise
 
     progress.files_total = len(files)
     progress.bytes_total = sum(f.total_size for f in files)
     progress.state = "downloading"
-    progress_queue.put(progress.to_dict())
+    _emit(progress_queue, progress.to_dict())
 
     meter = _SpeedMeter()
     bytes_done_global = 0
@@ -268,12 +277,12 @@ def download_firmware(
     for f_idx, fr in enumerate(files):
         if cancel_event.is_set():
             progress.state = "cancelled"
-            progress_queue.put(progress.to_dict())
+            _emit(progress_queue, progress.to_dict())
             raise DownloadCancelled()
 
         progress.current_file = fr.filename
         progress.files_done = f_idx
-        progress_queue.put(progress.to_dict())
+        _emit(progress_queue, progress.to_dict())
 
         target = output_dir / fr.filename
         # Resume: nếu file tồn tại và đúng size → skip
@@ -292,7 +301,7 @@ def download_firmware(
                     fout.close()
                     target_tmp.unlink(missing_ok=True)
                     progress.state = "cancelled"
-                    progress_queue.put(progress.to_dict())
+                    _emit(progress_queue, progress.to_dict())
                     raise DownloadCancelled()
 
                 resp = _http_get_stream(chunk.url, timeout=60)
@@ -303,7 +312,7 @@ def download_firmware(
                             fout.close()
                             target_tmp.unlink(missing_ok=True)
                             progress.state = "cancelled"
-                            progress_queue.put(progress.to_dict())
+                            _emit(progress_queue, progress.to_dict())
                             raise DownloadCancelled()
                         buf = resp.read(CHUNK_BUFFER_SIZE)
                         if not buf:
@@ -322,7 +331,7 @@ def download_firmware(
                             progress.speed_bps = speed
                             remaining = progress.bytes_total - progress.bytes_done
                             progress.eta_seconds = remaining / speed if speed > 0 else 0
-                            progress_queue.put(progress.to_dict())
+                            _emit(progress_queue, progress.to_dict())
                 finally:
                     resp.close()
 
@@ -333,7 +342,7 @@ def download_firmware(
                 target_tmp.unlink(missing_ok=True)
                 progress.state = "error"
                 progress.error = f"MD5 không khớp cho {fr.filename} (got {actual[:8]}.. expected {fr.file_md5[:8]}..)"
-                progress_queue.put(progress.to_dict())
+                _emit(progress_queue, progress.to_dict())
                 raise RuntimeError(progress.error)
 
         target_tmp.replace(target)
@@ -343,7 +352,7 @@ def download_firmware(
     progress.files_done = progress.files_total
     progress.current_file = ""
     progress.eta_seconds = 0
-    progress_queue.put(progress.to_dict())
+    _emit(progress_queue, progress.to_dict())
     return output_dir
 
 
@@ -369,8 +378,12 @@ def start_download_job(firmware_url: str, label: str) -> DownloadJob:
     """Spawn background thread tải firmware. Trả job_id để client subscribe SSE."""
     import secrets
     job_id = secrets.token_urlsafe(12)
-    # Safe folder name từ label
+    # Safe folder name từ label — reject control char, path separator, reserved name.
     safe_label = "".join(c if c.isalnum() or c in ".-_" else "_" for c in label)[:80]
+    # Strip leading/trailing dot+underscore để tránh ".." hoặc "..." → folder ẩn/lỗi Windows
+    safe_label = safe_label.strip("._")
+    if not safe_label:
+        safe_label = "rom"
     output_dir = DOWNLOADS_DIR / f"{safe_label}_{int(time.time())}"
 
     queue: Queue = Queue(maxsize=200)
@@ -383,7 +396,7 @@ def start_download_job(firmware_url: str, label: str) -> DownloadJob:
             logger.info("Job %s cancelled", job_id)
         except Exception as e:
             logger.exception("Job %s failed: %s", job_id, e)
-            queue.put({"job_id": job_id, "state": "error", "error": str(e)})
+            _emit(queue, {"job_id": job_id, "state": "error", "error": str(e)})
 
     thread = threading.Thread(target=runner, name=f"download-{job_id}", daemon=True)
     job = DownloadJob(

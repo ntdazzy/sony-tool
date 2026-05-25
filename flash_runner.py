@@ -173,10 +173,8 @@ def _parse_output_line(line: str, progress: FlashProgress) -> bool:
             logger.info("Flashing: %s (%d/%d)", partition, progress.partitions_done, progress.partitions_total)
         return True
 
-    if _RE_DONE.search(line_stripped) and "ll done" in line_stripped.lower() or line_stripped.lower().strip() in ("done.", "done", "finished"):
-        # "All done" thường là final
-        return True
-
+    # Note: "done" detection chỉ là informational (state cuối set theo proc.returncode).
+    # Không cần action thêm ở đây.
     return False
 
 
@@ -207,18 +205,18 @@ def _run_newflasher(job: FlashJob) -> None:
         state="starting",
         partitions_total=_count_partitions(job.rom_dir),
     )
-    job.progress_queue.put(progress.snapshot())
+    _emit(job.progress_queue, progress.snapshot())
 
     if exe is None:
         progress.state = "error"
         progress.error = f"newflasher.exe không tồn tại tại {NEWFLASHER_EXE}. Tải từ https://github.com/munjeni/newflasher rồi đặt vào vendor/"
-        job.progress_queue.put(progress.snapshot())
+        _emit(job.progress_queue, progress.snapshot())
         return
 
     if not job.rom_dir.exists() or not job.rom_dir.is_dir():
         progress.state = "error"
         progress.error = f"ROM folder không tồn tại: {job.rom_dir}"
-        job.progress_queue.put(progress.snapshot())
+        _emit(job.progress_queue, progress.snapshot())
         return
 
     # Safety filter: rename file nguy hiểm trước khi spawn newflasher.
@@ -229,7 +227,7 @@ def _run_newflasher(job: FlashJob) -> None:
     except OSError as e:
         progress.state = "error"
         progress.error = f"Safety filter lỗi: {e}"
-        job.progress_queue.put(progress.snapshot())
+        _emit(job.progress_queue, progress.snapshot())
         return
 
     if filter_result["skipped"]:
@@ -243,7 +241,7 @@ def _run_newflasher(job: FlashJob) -> None:
             progress.log_lines.append(f"[WARNING] Expert mode ON — sẽ flash TA file: {', '.join(ta_files)}")
     # Update count sau khi rename
     progress.partitions_total = _count_partitions(job.rom_dir)
-    job.progress_queue.put(progress.snapshot())
+    _emit(job.progress_queue, progress.snapshot())
 
     # Newflasher đọc current working dir → cwd=rom_dir
     kwargs: dict = {
@@ -259,7 +257,7 @@ def _run_newflasher(job: FlashJob) -> None:
         kwargs["creationflags"] = _CREATE_NO_WINDOW
 
     progress.state = "flashing"
-    job.progress_queue.put(progress.snapshot())
+    _emit(job.progress_queue, progress.snapshot())
     start_time = time.time()
 
     try:
@@ -267,26 +265,39 @@ def _run_newflasher(job: FlashJob) -> None:
     except OSError as e:
         progress.state = "error"
         progress.error = f"Spawn newflasher lỗi: {e}"
-        job.progress_queue.put(progress.snapshot())
+        _emit(job.progress_queue, progress.snapshot())
         return
 
     job.process = proc
+    last_emit = 0.0  # throttle: emit max 5 lần/giây để tránh fill queue
 
     try:
         assert proc.stdout is not None
         for line in proc.stdout:
             if job.cancel_event.is_set():
-                proc.terminate()
+                _terminate_proc(proc)
                 break
             progress.elapsed_seconds = time.time() - start_time
             _parse_output_line(line, progress)
-            # Throttle SSE emit — chỉ push khi state change hoặc mỗi 0.5s
-            job.progress_queue.put(progress.snapshot())
+            now = time.time()
+            if now - last_emit >= 0.2:
+                last_emit = now
+                _emit(job.progress_queue, progress.snapshot())
     except Exception as e:
         logger.exception("flash_runner stdout read error")
         progress.error = f"Đọc stdout lỗi: {e}"
 
-    proc.wait(timeout=10)
+    # Final wait — newflasher có thể hang sau khi đóng stdout, dùng kill làm fallback
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        logger.warning("newflasher không exit sau 10s, kill")
+        _terminate_proc(proc, force=True)
+        try:
+            proc.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            pass
+
     progress.exit_code = proc.returncode
     progress.elapsed_seconds = time.time() - start_time
 
@@ -299,7 +310,34 @@ def _run_newflasher(job: FlashJob) -> None:
         if not progress.error:
             progress.error = f"Newflasher exit code {proc.returncode}"
 
-    job.progress_queue.put(progress.snapshot())
+    _emit(job.progress_queue, progress.snapshot())
+
+
+def _emit(q: Queue, item: dict) -> None:
+    """Non-blocking emit — drop nếu queue full thay vì block worker thread."""
+    try:
+        q.put_nowait(item)
+    except Exception:
+        # Queue full — client SSE quá chậm hoặc disconnect. Drop event để worker tiếp tục.
+        logger.debug("Queue full, drop event")
+
+
+def _terminate_proc(proc: subprocess.Popen, force: bool = False) -> None:
+    """Terminate process. Trên Windows SIGTERM bị ignore → fallback kill."""
+    if proc.poll() is not None:
+        return  # đã exit
+    try:
+        if force:
+            proc.kill()
+        else:
+            proc.terminate()
+            # Cho 2s rồi kill nếu vẫn alive
+            try:
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+    except (OSError, ProcessLookupError):
+        pass
 
 
 def start_flash_job(rom_dir: Path, flash_ta: bool = False) -> FlashJob:
@@ -341,9 +379,20 @@ def cancel_job(job_id: str) -> bool:
     if not job:
         return False
     job.cancel_event.set()
-    if job.process and job.process.poll() is None:
-        try:
-            job.process.terminate()
-        except Exception:
-            pass
+    if job.process:
+        _terminate_proc(job.process, force=True)
     return True
+
+
+def cleanup_finished_jobs(max_age_seconds: float = 3600) -> int:
+    """Dọn job đã done/error/cancelled cũ. Trả về số job dọn.
+    Gọi opportunistically khi start job mới để tránh _JOBS leak."""
+    now = time.time()
+    removed = 0
+    with _JOBS_LOCK:
+        for jid in list(_JOBS.keys()):
+            job = _JOBS[jid]
+            if not job.thread.is_alive() and (now - job.started_at) > max_age_seconds:
+                del _JOBS[jid]
+                removed += 1
+    return removed
