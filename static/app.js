@@ -215,6 +215,7 @@ $$(".tab").forEach(btn => {
     if (id === "optimize" && STATE.serial) loadPresetStates();
     if (id === "apn") loadApnData();
     if (id === "bootloader" && STATE.serial && !STATE.bootloaderChecked) checkBootloader();
+    if (id === "rom" && STATE.serial && !STATE.romDetected) detectRomDevice();
   });
 });
 
@@ -1298,6 +1299,166 @@ async function checkBootloader() {
 }
 
 $("#btn-check-bootloader")?.addEventListener("click", checkBootloader);
+
+// ---------- ROM ----------
+
+async function detectRomDevice() {
+  if (!STATE.serial) {
+    $("#rom-device-result").innerHTML = `<p class="muted">Chưa kết nối máy — bấm ↻ ở góc trên phải.</p>`;
+    return;
+  }
+  $("#rom-device-result").innerHTML = `<p class="muted">Đang đọc model + customization (mất 5-10s lần đầu, tool sẽ tải database mapping)…</p>`;
+  logEntry("📱 ROM: detecting model + customization", "action");
+
+  try {
+    const d = await api(`/api/rom/device?serial=${encodeURIComponent(STATE.serial)}`);
+    STATE.romDetected = true;
+    STATE.romDeviceInfo = d;
+
+    if (!d.supported) {
+      $("#rom-device-result").innerHTML = `
+        <table>
+          <tr><td>Model</td><td><b>${d.model_name || "—"}</b></td></tr>
+          <tr><td>Build hiện tại</td><td><code>${d.current_build || "—"}</code></td></tr>
+          <tr><td>Customization code</td><td><code>${d.device_cust_number || "—"}</code></td></tr>
+          <tr><td>SPC</td><td><code>${d.device_spcode || "—"}</code></td></tr>
+        </table>
+        <div class="warn" style="margin-top:14px">⚠️ ${d.message || "Model chưa support."}</div>
+      `;
+      logEntry(`📱 ROM: model ${d.model_name} chưa có trong database`, "warn");
+      return;
+    }
+
+    const m = d.model;
+    const custList = m.customizations.map(c => {
+      const isAuto = c.id === d.auto_cust_id;
+      return `<li>${isAuto ? "✓ " : ""}<b>${c.name}</b> — SPC <code>${c.spc || "—"}</code>${isAuto ? " <span class='muted'>(khớp máy của bạn)</span>" : ""}</li>`;
+    }).join("");
+
+    $("#rom-device-result").innerHTML = `
+      <table>
+        <tr><td>Model</td><td><b>${m.name}</b></td></tr>
+        <tr><td>Product code</td><td><code>${m.product_name}</code></td></tr>
+        <tr><td>Group</td><td>${m.group_name}</td></tr>
+        <tr><td>Build hiện tại</td><td><code>${d.current_build || "—"}</code></td></tr>
+        <tr><td>Customization của máy</td><td><code>${d.device_cust_number || "—"}</code> (SPC <code>${d.device_spcode || "—"}</code>)</td></tr>
+      </table>
+      <p class="muted" style="margin-top:12px"><b>${m.customizations.length}</b> customization variant tồn tại cho model này:</p>
+      <ul style="padding-left:20px;font-size:13px">${custList}</ul>
+    `;
+    $("#rom-firmware-card").hidden = false;
+    logEntry(`📱 ROM: detected ${m.name} (${m.customizations.length} cust variants)`, "success");
+  } catch (e) {
+    $("#rom-device-result").innerHTML = `<p style="color:var(--danger)">Lỗi: ${e.message}</p>`;
+    logEntry(`📱 ROM detect lỗi: ${e.message}`, "error");
+  }
+}
+
+async function loadRomFirmwareList() {
+  if (!STATE.romDeviceInfo?.supported) {
+    toast("Phát hiện máy trước", "warn");
+    return;
+  }
+  const model = STATE.romDeviceInfo.model;
+  const cust = STATE.romDeviceInfo.auto_cust_id || (model.customizations[0]?.id);
+
+  showLoading("Đang query Sony API để lấy danh sách ROM…");
+  logEntry(`📱 ROM: querying Sony GCS for ${model.name}`, "action");
+
+  try {
+    const data = await api(`/api/rom/firmware-list?model_name=${encodeURIComponent(model.name)}${cust ? "&cust_id=" + encodeURIComponent(cust) : ""}`);
+
+    const html = data.results.map(r => {
+      if (!r.ok) {
+        return `<div class="preset-warning" style="margin-top:8px">❌ ${r.cust_name}: ${r.device_problem}</div>`;
+      }
+      // Group entries by version, show KEEP / WIPE per version
+      const byVer = new Map();
+      for (const e of r.entries) {
+        if (!byVer.has(e.version)) byVer.set(e.version, []);
+        byVer.get(e.version).push(e);
+      }
+      const rows = [...byVer.entries()].map(([ver, entries]) => `
+        <tr>
+          <td><b>${ver}</b>${entries[0].revision ? ` <span class="muted">-${entries[0].revision}</span>` : ""}</td>
+          <td>${entries[0].release_state}</td>
+          <td>${entries[0].android_update_type === "NA" ? "—" : entries[0].android_update_type}</td>
+          <td>
+            ${entries.map(e => `
+              <button class="btn-sm btn-secondary"
+                      data-rom-action="download"
+                      data-url="${e.download_url.replace(/"/g, "&quot;")}"
+                      data-version="${ver}"
+                      data-mode="${e.is_factory_reset ? 'wipe' : 'keep'}"
+                      title="${e.is_factory_reset ? 'Cài lại sạch (factory reset)' : 'Giữ data hiện có'}">
+                ${e.is_factory_reset ? '🧹 Wipe' : '💾 Keep'}
+              </button>
+            `).join(" ")}
+          </td>
+        </tr>
+      `).join("");
+      return `
+        <div style="margin-top:14px">
+          <h4 style="margin:0 0 6px 0">📦 ${r.cust_name} <span class="muted">(${byVer.size} version)</span></h4>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Version</th><th>State</th><th>Android update</th><th>Mode flash</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table></div>
+        </div>
+      `;
+    }).join("");
+
+    $("#rom-firmware-list").innerHTML = html || `<p class="muted">Không có firmware cho máy này.</p>`;
+
+    // Wire up download buttons (placeholder — Day 2 sẽ implement download flow)
+    $$("#rom-firmware-list button[data-rom-action='download']").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const v = btn.dataset.version;
+        const mode = btn.dataset.mode;
+        toast(`Day 2 chưa làm — sẽ download ${v} (${mode === 'wipe' ? 'wipe' : 'keep data'})`, "warn");
+        logEntry(`📥 ROM download placeholder: ${v} mode=${mode}`, "info");
+      });
+    });
+
+    logEntry(`📱 ROM: ${data.results.reduce((s, r) => s + r.entries.length, 0)} firmware entries`, "success");
+  } catch (e) {
+    $("#rom-firmware-list").innerHTML = `<p style="color:var(--danger)">Lỗi: ${e.message}</p>`;
+    logEntry(`📱 ROM list lỗi: ${e.message}`, "error");
+  } finally {
+    hideLoading();
+  }
+}
+
+async function refreshRomCache() {
+  openModal({
+    title: "Refresh database mapping?",
+    body: `<p>Tool sẽ tải lại file metadata từ server XperiFirm community. Cần khi Sony release model mới hoặc Sony đổi format.</p><p class="muted">~50KB, mất 2-5 giây.</p>`,
+    confirmText: "⟲ Refresh",
+    confirmClass: "btn-primary",
+    onConfirm: async () => {
+      showLoading("Đang tải resources mới…");
+      try {
+        const d = await api("/api/rom/refresh-resources", { method: "POST" });
+        toast(`✓ Refresh OK — ${d.model_count} model trong database`, "success");
+        logEntry(`📱 ROM resources refresh: ${d.model_count} models, ${d.xml_size} bytes`, "success");
+        STATE.romDetected = false;  // force re-detect
+        if (STATE.serial) detectRomDevice();
+      } catch (e) {
+        toast("Lỗi: " + e.message, "error");
+        logEntry(`📱 ROM refresh lỗi: ${e.message}`, "error");
+      } finally {
+        hideLoading();
+      }
+    },
+  });
+}
+
+$("#btn-rom-detect")?.addEventListener("click", () => {
+  STATE.romDetected = false;
+  detectRomDevice();
+});
+$("#btn-rom-load-firmware")?.addEventListener("click", loadRomFirmwareList);
+$("#btn-rom-refresh-cache")?.addEventListener("click", refreshRomCache);
 
 // ---------- init ----------
 

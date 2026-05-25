@@ -34,6 +34,7 @@
       <button class="tab" data-tab="insights">Phân tích</button>
       <button class="tab" data-tab="apn">APN</button>
       <button class="tab" data-tab="bootloader">Bootloader</button>
+      <button class="tab" data-tab="rom">ROM</button>
       <button class="tab" data-tab="backup">Backup</button>
       <button class="tab" data-tab="help">Hướng dẫn</button>
     </nav>
@@ -347,6 +348,43 @@
               </ol>
             </li>
             <li><b>Cảnh báo</b>: unlock = factory reset + mất bảo hành + mất DRM keys (camera quality giảm, không xem HDR Netflix).</li>
+          </ul>
+        </div>
+
+      </section>
+
+      <!-- =================== ROM =================== -->
+      <section class="tab-panel" id="tab-rom">
+
+        <div class="page-head">
+          <h2>Cài ROM Sony stock</h2>
+          <p>Tải firmware chính thức từ server Sony + flash qua Newflasher</p>
+        </div>
+
+        <div class="card" id="rom-device-card">
+          <h2>Máy đang cắm</h2>
+          <p class="muted">Tool tự đọc model + customization code qua ADB để tìm đúng ROM.</p>
+          <button class="btn-primary" id="btn-rom-detect">Phát hiện máy</button>
+          <div id="rom-device-result" style="margin-top:14px"></div>
+        </div>
+
+        <div class="card" id="rom-firmware-card" hidden>
+          <h2>ROM có sẵn cho máy này</h2>
+          <p class="muted">Mọi version Sony đã release cho đúng model + customization của bạn (mới nhất ở đầu).</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+            <button class="btn-secondary btn-sm" id="btn-rom-load-firmware">↻ Tải danh sách ROM</button>
+            <button class="btn-secondary btn-sm" id="btn-rom-refresh-cache" title="Làm mới database model từ server XperiFirm">⟲ Refresh database</button>
+          </div>
+          <div id="rom-firmware-list" class="muted">Bấm "Tải danh sách ROM" để query Sony server.</div>
+        </div>
+
+        <div class="card card-tip">
+          <h3>Lưu ý</h3>
+          <ul class="tip-list">
+            <li><b>Bootloader KHÔNG cần unlock</b> — Sony cho phép flash stock ROM trên máy khoá (XQ-AS42 JP OK).</li>
+            <li><b>Không bao giờ flash partition TA</b> — chứa DRM keys + camera tunings. Mất TA = mất Bravia Engine, HDR Netflix.</li>
+            <li><b>Database mapping</b> lấy từ XperiFirm community (cache 7 ngày). Khi Sony release ROM mới và XperiFirm cập nhật → bấm "Refresh database" để có data mới nhất.</li>
+            <li>Sau khi tải ROM → tab này sẽ hiện wizard hướng dẫn vào <b>Flash Mode</b> (giữ Vol Down + cắm cáp) và chạy newflasher.</li>
           </ul>
         </div>
 

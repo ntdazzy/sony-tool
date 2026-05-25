@@ -687,6 +687,114 @@ def reboot(serial: str | None = None):
     return {"ok": True}
 
 
+# ============ ROM (Sony stock firmware) endpoints ============
+
+
+@app.get("/api/rom/device")
+def rom_detect_device(serial: str | None = None):
+    """Đọc model + customization code từ máy đang cắm qua ADB → match vào
+    resources XperiFirm để biết Product/Model/HwId/Cust UUIDs cần cho Sony API."""
+    import rom_resources  # lazy import — cryptography import nặng
+
+    def getprop(key: str) -> str:
+        try:
+            return adb.shell(f"getprop {key}", serial=serial, timeout=10).strip()
+        except adb.AdbError:
+            return ""
+
+    model_name = getprop("ro.product.model")
+    if not model_name:
+        raise HTTPException(status_code=400, detail="Không đọc được ro.product.model — máy chưa cắm hoặc ADB chưa authorize")
+
+    # Customization code: Sony Mobile Communications properties (khác nhau theo model)
+    spcode = getprop("ro.semc.product.spcode") or getprop("ro.semc.spc.no")
+    cust_number = getprop("ro.semc.product.number") or getprop("ro.semc.version")  # vd "1325-0114"
+    build_id = getprop("ro.build.display.id")  # vd "61.0.A.0.420"
+
+    try:
+        model = rom_resources.find_model(model_name)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Không tải được resources XperiFirm: {e}") from e
+
+    if model is None:
+        return {
+            "model_name": model_name,
+            "supported": False,
+            "current_build": build_id,
+            "device_spcode": spcode,
+            "device_cust_number": cust_number,
+            "message": f"Model '{model_name}' không có trong database XperiFirm — có thể chưa support hoặc model mới chưa update.",
+        }
+
+    # Auto-pick customization theo SPC match
+    auto_cust = None
+    if spcode:
+        for c in model.customizations:
+            if c.spc == spcode:
+                auto_cust = c
+                break
+
+    return {
+        "supported": True,
+        "current_build": build_id,
+        "device_spcode": spcode,
+        "device_cust_number": cust_number,
+        "model": model.to_dict(),
+        "auto_cust_id": auto_cust.id if auto_cust else (model.customizations[0].id if model.customizations else None),
+    }
+
+
+@app.get("/api/rom/firmware-list")
+def rom_firmware_list(model_name: str, cust_id: str | None = None):
+    """List firmware có sẵn cho 1 model + customization từ Sony GCS API."""
+    import rom_resources
+    import sony_gcs
+
+    model = rom_resources.find_model(model_name)
+    if model is None:
+        raise HTTPException(status_code=404, detail=f"Model '{model_name}' không có trong database XperiFirm")
+
+    if cust_id:
+        cust = next((c for c in model.customizations if c.id == cust_id), None)
+        if cust is None:
+            raise HTTPException(status_code=404, detail=f"Customization id={cust_id} không thuộc model {model_name}")
+        custs_to_query = [cust]
+    else:
+        custs_to_query = list(model.customizations)
+
+    results = []
+    for c in custs_to_query:
+        try:
+            fw_list = sony_gcs.query_firmware(model, c)
+            results.append(fw_list.to_dict())
+        except sony_gcs.GcsError as e:
+            results.append({
+                "model_name": model.name,
+                "cust_name": c.name,
+                "device_problem": f"ERROR: {e}",
+                "ok": False,
+                "entries": [],
+            })
+    return {"model": model.to_dict(), "results": results}
+
+
+@app.post("/api/rom/refresh-resources")
+def rom_refresh_resources():
+    """Force refresh XperiFirm resources cache (bypass 7-day TTL).
+    Dùng khi Sony/Igor update mapping và tool cache cũ."""
+    import rom_resources
+
+    try:
+        xml_bytes = rom_resources.fetch_resources(force_refresh=True)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Refresh thất bại: {e}") from e
+    return {
+        "ok": True,
+        "xml_size": len(xml_bytes),
+        "model_count": len(rom_resources.all_model_names(xml_bytes)),
+    }
+
+
 @app.exception_handler(adb.AdbError)
 def adb_error_handler(_, exc):
     return JSONResponse(status_code=400, content={"detail": str(exc)})

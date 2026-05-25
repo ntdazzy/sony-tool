@@ -10,6 +10,7 @@ htmlcov/
 # Tool runtime data (chứa data từ máy thật, không nên public)
 backups/
 platform-tools/
+vendor/
 
 # Editor / OS
 .DS_Store

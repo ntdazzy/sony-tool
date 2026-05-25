@@ -3,7 +3,7 @@
   "configurations": [
     {
       "name": "sony-tool",
-      "runtimeExecutable": "./.venv/bin/uvicorn",
+      "runtimeExecutable": ".\\.venv\\Scripts\\uvicorn.exe",
       "runtimeArgs": ["app:app", "--host", "127.0.0.1", "--port", "8765", "--log-level", "info"],
       "port": 8765
     }
