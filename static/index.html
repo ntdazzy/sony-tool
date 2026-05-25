@@ -31,6 +31,7 @@
       <button class="tab" data-tab="cleanup">Dọn sạch</button>
       <button class="tab" data-tab="all">Tất cả app</button>
       <button class="tab" data-tab="optimize">Tối ưu</button>
+      <button class="tab" data-tab="insights">Phân tích</button>
       <button class="tab" data-tab="apn">APN</button>
       <button class="tab" data-tab="bootloader">Bootloader</button>
       <button class="tab" data-tab="backup">Backup</button>
@@ -247,6 +248,41 @@
 
         <div class="card">
           <div id="presets-list">Đang tải…</div>
+        </div>
+
+      </section>
+
+      <!-- =================== INSIGHTS =================== -->
+      <section class="tab-panel" id="tab-insights">
+
+        <div class="page-head">
+          <h2>Phân tích máy</h2>
+          <p>Top app theo dung lượng, CPU, notification — biết ai đang ăn tài nguyên</p>
+        </div>
+
+        <div class="card">
+          <h2>💾 Top app theo dung lượng</h2>
+          <p class="muted">APK + data + cache. Bấm để tải, mất 5-15s.</p>
+          <button class="btn-primary btn-sm" id="btn-load-storage">↻ Tải dung lượng</button>
+          <div id="storage-summary" class="muted tiny" style="margin-top:8px"></div>
+          <div id="storage-list" style="margin-top:12px"></div>
+        </div>
+
+        <div class="card">
+          <h2>🔋 Top app tốn CPU (proxy cho pin)</h2>
+          <p class="muted">Dữ liệu tích luỹ kể từ lần reset cuối. Reset → dùng máy 24h bình thường → tải lại để xem ai tốn pin nhất.</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn-primary btn-sm" id="btn-load-battery">↻ Tải CPU stats</button>
+            <button class="btn-warning btn-sm" id="btn-reset-battery">⟲ Reset stats (bắt đầu đo lại)</button>
+          </div>
+          <div id="battery-list" style="margin-top:12px"></div>
+        </div>
+
+        <div class="card">
+          <h2>🔔 Top app gửi notification</h2>
+          <p class="muted">App nào spam notification → suggest tắt.</p>
+          <button class="btn-primary btn-sm" id="btn-load-notif">↻ Tải notification stats</button>
+          <div id="notif-list" style="margin-top:12px"></div>
         </div>
 
       </section>

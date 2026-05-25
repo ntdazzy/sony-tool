@@ -450,6 +450,156 @@ def export_full(serial: str | None = None):
     }
 
 
+# ============ Insights endpoints (storage/battery/notifications) ============
+
+
+def _parse_diskstats(out: str) -> list[dict]:
+    """Parse `dumpsys diskstats` để lấy app sizes."""
+    import re as _re
+
+    pkg_match = _re.search(r"Package Names: \[([^\]]+)\]", out)
+    size_match = _re.search(r"App Sizes: \[([^\]]+)\]", out)
+    data_match = _re.search(r"App Data Sizes: \[([^\]]+)\]", out)
+    cache_match = _re.search(r"App Cache Sizes: \[([^\]]+)\]", out)
+
+    if not all([pkg_match, size_match, data_match, cache_match]):
+        return []
+
+    names = [n.strip().strip('"') for n in pkg_match.group(1).split(",")]
+
+    def _parse_nums(s: str) -> list[int]:
+        out_list = []
+        for x in s.split(","):
+            x = x.strip()
+            try:
+                out_list.append(int(x))
+            except (ValueError, TypeError):
+                out_list.append(0)
+        return out_list
+
+    sizes = _parse_nums(size_match.group(1))
+    data_sizes = _parse_nums(data_match.group(1))
+    cache_sizes = _parse_nums(cache_match.group(1))
+
+    apps = []
+    for i, name in enumerate(names):
+        if not name:
+            continue
+        apk = sizes[i] if i < len(sizes) else 0
+        data = data_sizes[i] if i < len(data_sizes) else 0
+        cache = cache_sizes[i] if i < len(cache_sizes) else 0
+        apps.append({
+            "name": name,
+            "apk_bytes": apk,
+            "data_bytes": data,
+            "cache_bytes": cache,
+            "total_bytes": apk + data + cache,
+        })
+    apps.sort(key=lambda a: a["total_bytes"], reverse=True)
+    return apps
+
+
+@app.get("/api/insights/storage")
+def insights_storage(serial: str | None = None):
+    """Top app theo dung lượng (APK + data + cache)."""
+    try:
+        out = adb.shell("dumpsys diskstats", serial=serial, timeout=30)
+    except adb.AdbError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    apps = _parse_diskstats(out)
+    if not apps:
+        return {"apps": [], "total_count": 0, "warning": "Không parse được dumpsys diskstats output."}
+    return {"apps": apps[:50], "total_count": len(apps)}
+
+
+def _parse_batterystats_checkin(out: str) -> list[dict]:
+    """Parse `dumpsys batterystats --checkin` lấy top apps theo CPU time."""
+    cpu_by_uid: dict[str, int] = {}
+    uid_to_pkg: dict[str, str] = {}
+
+    for line in out.splitlines():
+        parts = line.split(",")
+        if len(parts) < 5:
+            continue
+        # Format: <version>,<uid>,<aggregation>,<tag>,...
+        try:
+            tag = parts[3]
+        except IndexError:
+            continue
+        uid = parts[1]
+        if tag == "cpu" and len(parts) >= 6:
+            try:
+                user_ms = int(parts[4])
+                sys_ms = int(parts[5])
+                cpu_by_uid[uid] = cpu_by_uid.get(uid, 0) + user_ms + sys_ms
+            except ValueError:
+                continue
+        elif tag == "apk" and len(parts) >= 8:
+            # apk line: <ver>,<uid>,<agg>,apk,<wakeups>,<package>,<service_name>,<service_time>
+            pkg = parts[5] if len(parts) > 5 else ""
+            if pkg and uid not in uid_to_pkg:
+                uid_to_pkg[uid] = pkg
+
+    apps = []
+    for uid, cpu_ms in cpu_by_uid.items():
+        if cpu_ms <= 0:
+            continue
+        apps.append({
+            "uid": uid,
+            "package": uid_to_pkg.get(uid, f"(uid={uid})"),
+            "cpu_ms": cpu_ms,
+        })
+    apps.sort(key=lambda a: a["cpu_ms"], reverse=True)
+    return apps
+
+
+@app.get("/api/insights/battery")
+def insights_battery(serial: str | None = None):
+    """Top app theo CPU time tích luỹ (proxy cho pin)."""
+    try:
+        out = adb.shell("dumpsys batterystats --checkin", serial=serial, timeout=60)
+    except adb.AdbError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    apps = _parse_batterystats_checkin(out)
+    return {"top": apps[:20], "raw_lines": len(out.splitlines())}
+
+
+@app.post("/api/insights/battery-reset")
+def insights_battery_reset(serial: str | None = None):
+    """Reset batterystats để bắt đầu đo từ đầu."""
+    try:
+        adb.shell("dumpsys batterystats --reset", serial=serial, timeout=20)
+        return {"ok": True, "message": "Battery stats đã reset. Dùng máy bình thường, quay lại sau 24h xem top."}
+    except adb.AdbError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@app.get("/api/insights/notifications")
+def insights_notifications(serial: str | None = None):
+    """Đếm số notification post bởi mỗi package."""
+    import re as _re
+    from collections import Counter
+
+    try:
+        out = adb.shell("dumpsys notification --stats", serial=serial, timeout=20)
+    except adb.AdbError:
+        # Fallback: regular dumpsys notification
+        try:
+            out = adb.shell("dumpsys notification", serial=serial, timeout=20)
+        except adb.AdbError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+
+    counts: Counter = Counter()
+    for line in out.splitlines():
+        m = _re.search(r"pkg=([a-zA-Z][\w.]+)", line)
+        if m:
+            counts[m.group(1)] += 1
+
+    top = [{"package": pkg, "count": n} for pkg, n in counts.most_common(20)]
+    return {"top": top, "unique_apps": len(counts)}
+
+
 # Sony JP market device codes — bootloader locked by Sony policy
 _SONY_JP_MARKET_PREFIXES = (
     "SO-52", "SO-51", "SO-41", "SO-04", "SO-05",  # docomo

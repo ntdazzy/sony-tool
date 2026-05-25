@@ -69,12 +69,13 @@ def test_settings_step_key_is_snake_case():
                     )
 
 
-def test_settings_step_value_not_empty():
+def test_settings_step_value_present():
+    """Value phải là string (có thể rỗng — vd. clear DNS specifier)."""
     for p in _presets():
         for kind in ("apply", "revert"):
             for step in p[kind]:
                 if "value" in step:
-                    assert step["value"] != "", f"Preset {p['id']} value rỗng"
+                    assert isinstance(step["value"], str), f"Preset {p['id']} value không phải string"
 
 
 def test_shell_step_not_empty():

@@ -989,6 +989,166 @@ async function loadBackups() {
   }
 }
 
+// ---------- INSIGHTS ----------
+
+function _humanSize(bytes) {
+  if (!bytes || bytes < 0) return "—";
+  const units = ["B", "KB", "MB", "GB"];
+  let i = 0, v = bytes;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return `${v.toFixed(v >= 100 ? 0 : 1)} ${units[i]}`;
+}
+
+function _humanCpuTime(ms) {
+  if (!ms || ms < 0) return "—";
+  if (ms < 1000) return `${ms} ms`;
+  const sec = ms / 1000;
+  if (sec < 60) return `${sec.toFixed(1)} s`;
+  const min = sec / 60;
+  if (min < 60) return `${min.toFixed(1)} min`;
+  return `${(min / 60).toFixed(1)} h`;
+}
+
+async function loadStorageInsights() {
+  if (!STATE.serial) { toast("Chưa kết nối máy", "warn"); return; }
+  showLoading("Đang đọc disk stats (5-15s)…");
+  logEntry("💾 Đang tải app storage stats…", "action");
+  try {
+    const data = await api(`/api/insights/storage?serial=${encodeURIComponent(STATE.serial)}`);
+    const apps = data.apps || [];
+    if (apps.length === 0) {
+      $("#storage-list").innerHTML = `<p class="muted">${data.warning || "Không có dữ liệu"}</p>`;
+      return;
+    }
+    const totalBytes = apps.reduce((s, a) => s + a.total_bytes, 0);
+    $("#storage-summary").textContent = `${apps.length} app, tổng ${_humanSize(totalBytes)}`;
+    $("#storage-list").innerHTML = `
+      <div class="table-wrap" style="max-height:480px">
+        <table>
+          <thead><tr><th>#</th><th>App</th><th>APK</th><th>Data</th><th>Cache</th><th>Tổng</th></tr></thead>
+          <tbody>
+            ${apps.map((a, i) => `
+              <tr>
+                <td>${i + 1}</td>
+                <td><code>${a.name}</code></td>
+                <td>${_humanSize(a.apk_bytes)}</td>
+                <td>${_humanSize(a.data_bytes)}</td>
+                <td>${_humanSize(a.cache_bytes)}</td>
+                <td><b>${_humanSize(a.total_bytes)}</b></td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+    logEntry(`💾 Đã load ${apps.length} app, tổng ${_humanSize(totalBytes)}`, "success");
+  } catch (e) {
+    toast("Lỗi: " + e.message, "error");
+    logEntry(`💾 Storage load lỗi: ${e.message}`, "error");
+  } finally {
+    hideLoading();
+  }
+}
+
+async function loadBatteryInsights() {
+  if (!STATE.serial) { toast("Chưa kết nối máy", "warn"); return; }
+  showLoading("Đang đọc battery stats (10-30s)…");
+  logEntry("🔋 Đang tải battery stats…", "action");
+  try {
+    const data = await api(`/api/insights/battery?serial=${encodeURIComponent(STATE.serial)}`);
+    const apps = data.top || [];
+    if (apps.length === 0) {
+      $("#battery-list").innerHTML = `<p class="muted">Chưa có dữ liệu — chạy "Reset stats" rồi dùng máy 1 ngày.</p>`;
+      return;
+    }
+    $("#battery-list").innerHTML = `
+      <div class="table-wrap" style="max-height:400px;margin-top:12px">
+        <table>
+          <thead><tr><th>#</th><th>Package</th><th>UID</th><th>CPU time</th></tr></thead>
+          <tbody>
+            ${apps.map((a, i) => `
+              <tr>
+                <td>${i + 1}</td>
+                <td><code>${a.package}</code></td>
+                <td class="muted tiny">${a.uid}</td>
+                <td><b>${_humanCpuTime(a.cpu_ms)}</b></td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+    logEntry(`🔋 Đã load top ${apps.length} app tốn CPU`, "success");
+  } catch (e) {
+    toast("Lỗi: " + e.message, "error");
+    logEntry(`🔋 Battery load lỗi: ${e.message}`, "error");
+  } finally {
+    hideLoading();
+  }
+}
+
+async function resetBatteryStats() {
+  if (!STATE.serial) { toast("Chưa kết nối máy", "warn"); return; }
+  openModal({
+    title: "Reset battery stats?",
+    body: `<p>Sẽ xoá toàn bộ tracking cũ. Sau đó dùng máy bình thường 24h rồi quay lại đây bấm "Tải" để xem top app tốn pin.</p>`,
+    confirmText: "⟲ Reset",
+    confirmClass: "btn-warning",
+    onConfirm: async () => {
+      try {
+        await api(`/api/insights/battery-reset?serial=${encodeURIComponent(STATE.serial)}`, { method: "POST" });
+        toast("Battery stats đã reset", "success");
+        logEntry("🔋 Battery stats reset", "success");
+        $("#battery-list").innerHTML = `<p class="muted">✓ Đã reset. Dùng máy 24h rồi quay lại đây.</p>`;
+      } catch (e) {
+        toast("Lỗi: " + e.message, "error");
+      }
+    },
+  });
+}
+
+async function loadNotificationInsights() {
+  if (!STATE.serial) { toast("Chưa kết nối máy", "warn"); return; }
+  showLoading("Đang đọc notification stats…");
+  logEntry("🔔 Đang tải notification stats…", "action");
+  try {
+    const data = await api(`/api/insights/notifications?serial=${encodeURIComponent(STATE.serial)}`);
+    const apps = data.top || [];
+    if (apps.length === 0) {
+      $("#notif-list").innerHTML = `<p class="muted">Không có notification gần đây (hoặc parser không nhận output).</p>`;
+      return;
+    }
+    $("#notif-list").innerHTML = `
+      <p class="muted tiny" style="margin-top:8px">${data.unique_apps} app khác nhau có gửi notification</p>
+      <div class="table-wrap" style="max-height:360px;margin-top:8px">
+        <table>
+          <thead><tr><th>#</th><th>Package</th><th>Notification posts</th></tr></thead>
+          <tbody>
+            ${apps.map((a, i) => `
+              <tr>
+                <td>${i + 1}</td>
+                <td><code>${a.package}</code></td>
+                <td><b>${a.count}</b></td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+    logEntry(`🔔 Đã load ${apps.length} app gửi notif`, "success");
+  } catch (e) {
+    toast("Lỗi: " + e.message, "error");
+    logEntry(`🔔 Notification load lỗi: ${e.message}`, "error");
+  } finally {
+    hideLoading();
+  }
+}
+
+$("#btn-load-storage")?.addEventListener("click", loadStorageInsights);
+$("#btn-load-battery")?.addEventListener("click", loadBatteryInsights);
+$("#btn-reset-battery")?.addEventListener("click", resetBatteryStats);
+$("#btn-load-notif")?.addEventListener("click", loadNotificationInsights);
+
 // ---------- APN ----------
 
 let APN_DATA = null;

@@ -385,6 +385,54 @@
         {"namespace": "secure", "key": "tap_to_wake", "value": "1"},
         {"namespace": "secure", "key": "doze_tap_gesture", "value": "1"}
       ]
+    },
+    {
+      "id": "private_dns_adguard",
+      "icon": "🛡️",
+      "category": "Riêng tư",
+      "title": "Private DNS — AdGuard (chặn quảng cáo)",
+      "description": "Đổi DNS sang AdGuard DNS — chặn quảng cáo + tracker ở DNS level, không cần cài app. Hoạt động cả trên Wi-Fi và 4G.",
+      "apply": [
+        {"namespace": "global", "key": "private_dns_mode", "value": "hostname"},
+        {"namespace": "global", "key": "private_dns_specifier", "value": "dns.adguard.com"}
+      ],
+      "revert": [
+        {"namespace": "global", "key": "private_dns_mode", "value": "off"},
+        {"namespace": "global", "key": "private_dns_specifier", "value": ""}
+      ]
+    },
+    {
+      "id": "private_dns_cloudflare",
+      "icon": "☁️",
+      "category": "Riêng tư",
+      "title": "Private DNS — Cloudflare (không log)",
+      "description": "Đổi DNS sang Cloudflare 1.1.1.1 — nhanh, riêng tư, không log query. Không chặn ads (dùng AdGuard nếu muốn chặn).",
+      "warning": "Áp dụng đè lên AdGuard nếu đã bật. Chỉ chọn 1 trong 2.",
+      "apply": [
+        {"namespace": "global", "key": "private_dns_mode", "value": "hostname"},
+        {"namespace": "global", "key": "private_dns_specifier", "value": "1dot1dot1dot1.cloudflare-dns.com"}
+      ],
+      "revert": [
+        {"namespace": "global", "key": "private_dns_mode", "value": "off"},
+        {"namespace": "global", "key": "private_dns_specifier", "value": ""}
+      ]
+    },
+    {
+      "id": "haptic_intensity_low",
+      "icon": "📳",
+      "category": "Âm thanh",
+      "title": "Giảm độ mạnh rung (Android 12+)",
+      "description": "Giảm độ mạnh haptic feedback xuống thấp. Đỡ tốn pin + đỡ ồn + ít nóng motor rung.",
+      "apply": [
+        {"namespace": "system", "key": "haptic_feedback_intensity", "value": "1"},
+        {"namespace": "system", "key": "notification_vibration_intensity", "value": "1"},
+        {"namespace": "system", "key": "ring_vibration_intensity", "value": "1"}
+      ],
+      "revert": [
+        {"namespace": "system", "key": "haptic_feedback_intensity", "value": "2"},
+        {"namespace": "system", "key": "notification_vibration_intensity", "value": "2"},
+        {"namespace": "system", "key": "ring_vibration_intensity", "value": "2"}
+      ]
     }
   ]
 }
