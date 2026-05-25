@@ -36,7 +36,6 @@
     "com.android.federatedcompute.services",
     "com.android.permissioncontroller",
     "com.android.packageinstaller",
-    "com.android.providers.media",
     "com.android.providers.media.module",
     "com.android.providers.downloads.ui",
     "com.android.providers.contactkeys",

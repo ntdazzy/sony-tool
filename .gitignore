@@ -1,10 +1,22 @@
+# Python
 .venv/
 __pycache__/
 *.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
 
+# Tool runtime data (chứa data từ máy thật, không nên public)
 backups/
 platform-tools/
 
+# Editor / OS
 .DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Logs
 *.log
 sony-export-*.txt
