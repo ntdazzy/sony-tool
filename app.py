@@ -283,26 +283,22 @@ def list_backups():
 
 @app.get("/api/export-full")
 def export_full(serial: str | None = None):
-    """Xuất dump đầy đủ máy (packages + services + getprop) để gửi cho dev phân tích."""
+    """Xuất dump đầy đủ máy (packages + services + getprop + settings) để gửi dev phân tích."""
     try:
         pkgs = adb.list_packages(serial)
         info = adb.device_info(serial)
-        services = ""
-        props = ""
-        try:
-            services = adb.shell("service list", serial=serial, timeout=20)
-        except adb.AdbError:
-            pass
-        try:
-            props = adb.shell("getprop", serial=serial, timeout=20)
-        except adb.AdbError:
-            pass
     except adb.AdbError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
+    def safe_shell(cmd: str, timeout: int = 20) -> str:
+        try:
+            return adb.shell(cmd, serial=serial, timeout=timeout)
+        except adb.AdbError:
+            return ""
+
     data = {
         "exported_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "tool_version": "1.0",
+        "tool_version": "1.1",
         "device": info,
         "stats": {
             "total_packages": len(pkgs),
@@ -312,8 +308,11 @@ def export_full(serial: str | None = None):
             "disabled": sum(1 for p in pkgs if not p.enabled),
         },
         "packages": [asdict(p) for p in pkgs],
-        "services_raw": services,
-        "getprop_raw": props,
+        "services_raw": safe_shell("service list", 25),
+        "getprop_raw": safe_shell("getprop", 20),
+        "settings_global_raw": safe_shell("settings list global", 15),
+        "settings_system_raw": safe_shell("settings list system", 15),
+        "settings_secure_raw": safe_shell("settings list secure", 15),
     }
     fname = f"export-{time.strftime('%Y%m%d-%H%M%S')}.json"
     fpath = BACKUP_DIR / fname

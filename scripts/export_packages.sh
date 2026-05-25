@@ -62,6 +62,18 @@ echo "🔎 Đang đọc dữ liệu từ máy..."
   adb $ADB_ARG shell "service list"
   echo ""
 
+  echo "===== SETTINGS GLOBAL ====="
+  adb $ADB_ARG shell "settings list global"
+  echo ""
+
+  echo "===== SETTINGS SYSTEM ====="
+  adb $ADB_ARG shell "settings list system"
+  echo ""
+
+  echo "===== SETTINGS SECURE ====="
+  adb $ADB_ARG shell "settings list secure"
+  echo ""
+
   echo "===== GETPROP (system properties) ====="
   adb $ADB_ARG shell "getprop"
 } > "$OUT" 2>&1

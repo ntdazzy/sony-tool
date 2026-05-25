@@ -1,7 +1,9 @@
 @echo off
-REM Xuat danh sach package + services + getprop tu may Sony qua ADB (Windows)
+REM Xuat danh sach package + settings + getprop tu may Sony qua ADB (Windows).
+REM Locale-safe: dung PowerShell de tao timestamp, dung UTF-8 codepage.
 REM Usage: export_packages.bat [serial]
 
+chcp 65001 >nul 2>&1
 setlocal enabledelayedexpansion
 
 set "DEVICE=%~1"
@@ -14,7 +16,7 @@ set "ADB=%SCRIPT_DIR%\platform-tools\adb.exe"
 if not exist "%ADB%" (
     where adb >nul 2>&1
     if errorlevel 1 (
-        echo Chua co ADB. Chay setup_adb.ps1 truoc.
+        echo [LOI] Chua co ADB. Chay setup_adb.ps1 truoc.
         exit /b 1
     )
     set "ADB=adb"
@@ -22,16 +24,15 @@ if not exist "%ADB%" (
 
 "%ADB%" %ADB_ARG% get-state >nul 2>&1
 if errorlevel 1 (
-    echo Khong thay may. Dam bao:
+    echo [LOI] Khong thay may. Dam bao:
     echo   1. Cap USB la cap data
     echo   2. May bat USB Debugging
     echo   3. Da bam 'Cho phep' tren popup may
     exit /b 1
 )
 
-for /f "tokens=2-4 delims=/ " %%a in ('date /t') do set "DATE=%%c%%a%%b"
-for /f "tokens=1-2 delims=:" %%a in ("%TIME: =0%") do set "TIME_=%%a%%b"
-set "TS=%DATE%-%TIME_%"
+REM Timestamp locale-safe qua PowerShell
+for /f "delims=" %%a in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmmss"') do set "TS=%%a"
 set "OUT=%USERPROFILE%\Desktop\sony-export-%TS%.txt"
 
 echo Dang doc du lieu tu may...
@@ -61,6 +62,15 @@ echo Dang doc du lieu tu may...
     echo.
     echo ===== SERVICES =====
     "%ADB%" %ADB_ARG% shell "service list"
+    echo.
+    echo ===== SETTINGS GLOBAL =====
+    "%ADB%" %ADB_ARG% shell "settings list global"
+    echo.
+    echo ===== SETTINGS SYSTEM =====
+    "%ADB%" %ADB_ARG% shell "settings list system"
+    echo.
+    echo ===== SETTINGS SECURE =====
+    "%ADB%" %ADB_ARG% shell "settings list secure"
     echo.
     echo ===== GETPROP =====
     "%ADB%" %ADB_ARG% shell "getprop"

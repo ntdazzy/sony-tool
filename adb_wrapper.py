@@ -51,21 +51,28 @@ def adb_available() -> bool:
     return shutil.which("adb") is not None or _bundled_adb() is not None
 
 
+_CREATE_NO_WINDOW = 0x08000000  # Windows: ẩn cmd console khi gọi adb
+
+
 def _run(args: list[str], timeout: int = 30) -> str:
     exe = _adb_executable()  # raise AdbError nếu không có
+    kwargs: dict = {
+        "capture_output": True,
+        "text": True,
+        "encoding": "utf-8",
+        "errors": "replace",
+        "timeout": timeout,
+    }
+    if os.name == "nt":
+        kwargs["creationflags"] = _CREATE_NO_WINDOW
     try:
-        result = subprocess.run(
-            [exe, *args],
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
+        result = subprocess.run([exe, *args], **kwargs)
     except subprocess.TimeoutExpired as e:
         raise AdbError(f"Lệnh ADB chạy quá lâu: {' '.join(args)}") from e
     if result.returncode != 0:
-        err = (result.stderr or result.stdout).strip()
+        err = (result.stderr or result.stdout or "").strip()
         raise AdbError(err or f"adb {' '.join(args)} thất bại")
-    return result.stdout
+    return result.stdout or ""
 
 
 def list_devices() -> list[Device]:

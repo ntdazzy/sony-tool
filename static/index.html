@@ -251,8 +251,13 @@
       </div>
 
       <div class="card">
-        <h2><span class="card-icon">📤</span> Xuất chi tiết để gửi dev</h2>
-        <p class="muted">Tạo dump đầy đủ: <b>tất cả package, services, getprop</b>. File JSON ~200-500KB, gửi qua chat để dev cập nhật bloat list cho máy bạn chính xác hơn.</p>
+        <h2><span class="card-icon">📤</span> Xuất chi tiết để gửi dev phân tích</h2>
+        <p class="muted">Tạo dump đầy đủ: <b>packages + services + getprop + settings (global/system/secure)</b>. File JSON ~500KB-1MB, gửi qua chat để dev:</p>
+        <ul class="muted" style="margin: 4px 0 12px 18px; font-size: 13px;">
+          <li>Map chính xác app của máy bạn vs bloat list → cập nhật <code>data/bloat_jp.json</code></li>
+          <li>Xem các setting đang cài để gợi ý thêm preset tối ưu phù hợp</li>
+          <li>Phát hiện service Sony lạ không có trong list mặc định</li>
+        </ul>
         <button class="btn-secondary" id="btn-export-full">📤 Xuất file chi tiết</button>
         <div id="export-status"></div>
       </div>
