@@ -97,6 +97,17 @@ def test_run_ps1_uses_windows_venv_path():
     assert r".venv\Scripts" in src or '.venv/Scripts' in src
 
 
+def test_setup_uses_python_m_pip_not_pip_exe():
+    """Trên Windows, pip.exe bị lock khi tự chạy → self-upgrade fail.
+    Phải dùng `python.exe -m pip` để tránh ERROR misleading khi setup."""
+    src = _read(ROOT / "setup_adb.ps1")
+    assert "python.exe" in src and "-m pip" in src, (
+        "setup_adb.ps1 phải gọi pip qua `python.exe -m pip` (không phải pip.exe trực tiếp)"
+    )
+    # Đảm bảo có --disable-pip-version-check để bớt noise
+    assert "--disable-pip-version-check" in src
+
+
 def test_ps1_files_are_ascii_only():
     """PowerShell 5.1 (Win10/11 default) đọc .ps1 không-BOM sai khi có Unicode →
     'string is missing the terminator' error. Bắt buộc ASCII thuần."""

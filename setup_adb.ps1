@@ -58,10 +58,19 @@ if (-not (Test-Path $venv)) {
 }
 
 # 4. Install Python deps
-$pip = Join-Path $venv "Scripts\pip.exe"
+# Use `python.exe -m pip` so pip self-upgrade works on Windows
+# (pip.exe is locked while running -> "ERROR: To modify pip, please run..." otherwise).
+$venvPython = Join-Path $venv "Scripts\python.exe"
 Write-Host "[..] Installing Python dependencies..."
-& $pip install -q --upgrade pip
-& $pip install -q -r (Join-Path $scriptDir "requirements.txt")
+& $venvPython -m pip install --quiet --disable-pip-version-check --upgrade pip
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "[WARN] pip self-upgrade failed (non-fatal, continuing)" -ForegroundColor Yellow
+}
+& $venvPython -m pip install --quiet --disable-pip-version-check -r (Join-Path $scriptDir "requirements.txt")
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "[ERROR] Failed to install dependencies" -ForegroundColor Red
+    exit 1
+}
 Write-Host "[OK] Python deps installed" -ForegroundColor Green
 
 Write-Host ""
