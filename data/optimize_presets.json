@@ -36,6 +36,20 @@
       ]
     },
     {
+      "id": "sim_hotplug_no_reboot",
+      "icon": "📱",
+      "category": "Hiệu năng",
+      "title": "Không reboot khi tháo / lắp SIM",
+      "description": "Mặc định Sony Xperia bắt buộc khởi động lại máy mỗi khi đổi/tháo SIM. Tắt service UICC detection để SIM nhận ngay không cần reboot. Verified trên XQ-AS42, Xperia 5 II/III Android 10-13 (XDA community).",
+      "warning": "Nếu sau này muốn quay về behavior cũ — bấm Khôi phục.",
+      "apply": [
+        {"shell": "pm disable-user --user 0 com.sonymobile.uiccdetection"}
+      ],
+      "revert": [
+        {"shell": "pm enable com.sonymobile.uiccdetection"}
+      ]
+    },
+    {
       "id": "background_limit_3",
       "icon": "📊",
       "category": "Hiệu năng",
