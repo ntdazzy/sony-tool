@@ -191,14 +191,37 @@ def shell(command: str, serial: str | None = None, timeout: int = 20) -> str:
     return _run(base + ["shell", command], timeout=timeout)
 
 
+# Ký tự cho phép trong namespace/key (snake_case AOSP convention) + value (alnum + . _ - / : @).
+# Reject mọi metachar shell (; & | $ ` \n " ') vì lệnh đi qua `adb shell` sẽ evaluate trên Android.
+_SETTINGS_NS_KEY_OK = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+_SETTINGS_VALUE_OK = _SETTINGS_NS_KEY_OK + ".-/:@,"
+
+
+def _check_arg(arg: str, allowed: str, what: str) -> None:
+    if not arg:
+        raise AdbError(f"{what} rỗng")
+    bad = [c for c in arg if c not in allowed]
+    if bad:
+        raise AdbError(f"{what} chứa ký tự không hợp lệ: {sorted(set(bad))!r}")
+
+
 def settings_get(namespace: str, key: str, serial: str | None = None) -> str:
+    _check_arg(namespace, _SETTINGS_NS_KEY_OK, "namespace")
+    _check_arg(key, _SETTINGS_NS_KEY_OK, "key")
     return shell(f"settings get {namespace} {key}", serial=serial).strip()
 
 
 def settings_put(namespace: str, key: str, value: str, serial: str | None = None) -> str:
+    _check_arg(namespace, _SETTINGS_NS_KEY_OK, "namespace")
+    _check_arg(key, _SETTINGS_NS_KEY_OK, "key")
+    # Value cho phép thêm 1 số ký tự (vd DNS hostname có dot) nhưng vẫn reject shell metachars.
+    if value != "":
+        _check_arg(value, _SETTINGS_VALUE_OK, "value")
     return shell(f"settings put {namespace} {key} {value}", serial=serial).strip()
 
 
 def device_config_get(namespace: str, key: str, serial: str | None = None) -> str:
     """Đọc device_config (Android 10+). Trả 'null' nếu chưa set."""
+    _check_arg(namespace, _SETTINGS_NS_KEY_OK, "namespace")
+    _check_arg(key, _SETTINGS_NS_KEY_OK, "key")
     return shell(f"device_config get {namespace} {key}", serial=serial).strip()

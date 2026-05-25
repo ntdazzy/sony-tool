@@ -158,7 +158,7 @@ def test_notifications_falls_back_when_stats_unavailable(monkeypatch):
 def test_private_dns_presets_exist():
     import json
     from pathlib import Path
-    presets = json.loads((Path(__file__).parent.parent / "data" / "optimize_presets.json").read_text())["presets"]
+    presets = json.loads((Path(__file__).parent.parent / "data" / "optimize_presets.json").read_text(encoding="utf-8"))["presets"]
     ids = {p["id"] for p in presets}
     assert "private_dns_adguard" in ids
     assert "private_dns_cloudflare" in ids
@@ -167,7 +167,7 @@ def test_private_dns_presets_exist():
 def test_haptic_intensity_preset_exists():
     import json
     from pathlib import Path
-    presets = json.loads((Path(__file__).parent.parent / "data" / "optimize_presets.json").read_text())["presets"]
+    presets = json.loads((Path(__file__).parent.parent / "data" / "optimize_presets.json").read_text(encoding="utf-8"))["presets"]
     ids = {p["id"] for p in presets}
     assert "haptic_intensity_low" in ids
 
@@ -175,6 +175,6 @@ def test_haptic_intensity_preset_exists():
 def test_total_preset_count_after_v4():
     import json
     from pathlib import Path
-    presets = json.loads((Path(__file__).parent.parent / "data" / "optimize_presets.json").read_text())["presets"]
+    presets = json.loads((Path(__file__).parent.parent / "data" / "optimize_presets.json").read_text(encoding="utf-8"))["presets"]
     # Was 27, +3 new (2 DNS + 1 haptic) = 30
     assert len(presets) >= 30

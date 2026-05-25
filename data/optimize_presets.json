@@ -98,7 +98,7 @@
         {"shell": "settings put global low_power_trigger_level 25"}
       ],
       "revert": [
-        {"shell": "settings put global low_power_trigger_level 15"}
+        {"shell": "settings delete global low_power_trigger_level"}
       ]
     },
     {
@@ -153,15 +153,13 @@
       "icon": "💤",
       "category": "Pin",
       "title": "Doze mode tích cực (ngủ sâu hơn)",
-      "description": "Máy vào chế độ ngủ sâu nhanh hơn khi không dùng. Pin trâu hơn rõ ở chế độ chờ.",
-      "warning": "Thông báo của vài app có thể bị delay.",
+      "description": "Ép Android vào chế độ ngủ sâu nhanh hơn khi máy nằm yên. Pin trâu hơn rõ ở chế độ chờ. Giữ GMS trong whitelist để push notification vẫn hoạt động.",
+      "warning": "Thông báo của vài app non-FCM có thể bị delay 5-10 phút khi máy nằm yên lâu.",
       "apply": [
-        {"shell": "dumpsys deviceidle whitelist -com.google.android.gms"},
         {"shell": "dumpsys deviceidle enable all"}
       ],
       "revert": [
-        {"shell": "dumpsys deviceidle disable all"},
-        {"shell": "dumpsys deviceidle whitelist +com.google.android.gms"}
+        {"shell": "dumpsys deviceidle disable all"}
       ]
     },
     {
@@ -361,14 +359,14 @@
       "id": "bt_a2dp_codec_hd",
       "icon": "🎵",
       "category": "Âm thanh",
-      "title": "Ưu tiên codec Bluetooth chất lượng cao",
-      "description": "Buộc dùng codec aptX HD / LDAC nếu BT headphone hỗ trợ. Âm thanh chi tiết, ít méo hơn SBC mặc định.",
-      "warning": "Nếu BT headphone không hỗ trợ → sẽ tự fallback về SBC, không hại gì.",
+      "title": "Bluetooth AVRCP 1.6 (mới nhất)",
+      "description": "Ép Bluetooth dùng AVRCP 1.6 — profile mới nhất, metadata + volume control mượt hơn. Để force codec aptX HD/LDAC: Developer Options → Bluetooth Audio Codec (Android cấm app set qua settings).",
+      "warning": "Tai nghe BT cũ có thể không tương thích avrcp16 → revert về avrcp14.",
       "apply": [
-        {"shell": "settings put system bluetooth_select_a2dp_codec_priority 6"}
+        {"namespace": "global", "key": "bluetooth_avrcp_version", "value": "avrcp16"}
       ],
       "revert": [
-        {"shell": "settings put system bluetooth_select_a2dp_codec_priority 0"}
+        {"namespace": "global", "key": "bluetooth_avrcp_version", "value": "avrcp14"}
       ]
     },
     {

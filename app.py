@@ -383,12 +383,13 @@ def backup(serial: str | None = None):
     """Xuất danh sách package + trạng thái enabled. Lưu file JSON local."""
     try:
         pkgs = adb.list_packages(serial)
+        info = adb.device_info(serial)
     except adb.AdbError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
     data = {
         "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "device": adb.device_info(serial) if serial else adb.device_info(),
+        "device": info,
         "packages": [asdict(p) for p in pkgs],
     }
     fname = f"backup-{time.strftime('%Y%m%d-%H%M%S')}.json"

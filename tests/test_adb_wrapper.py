@@ -180,3 +180,74 @@ def test_list_packages_sorted(monkeypatch):
     pkgs = adb.list_packages()
     names = [p.name for p in pkgs]
     assert names == sorted(names)
+
+
+# ============ Shell injection guard ============
+
+
+def test_settings_put_rejects_shell_metachar_in_value(monkeypatch):
+    """Value chứa `;` (command separator) phải bị reject TRƯỚC khi gọi adb."""
+    called = []
+    monkeypatch.setattr(adb, "shell", lambda cmd, **kw: called.append(cmd) or "OK")
+    with pytest.raises(adb.AdbError, match="ký tự không hợp lệ"):
+        adb.settings_put("global", "foo", "1; reboot")
+    assert called == [], "Không được gọi adb khi value độc"
+
+
+def test_settings_put_rejects_backtick(monkeypatch):
+    monkeypatch.setattr(adb, "shell", lambda *a, **k: "OK")
+    with pytest.raises(adb.AdbError):
+        adb.settings_put("global", "foo", "1`whoami`")
+
+
+def test_settings_put_rejects_pipe_and_amp(monkeypatch):
+    monkeypatch.setattr(adb, "shell", lambda *a, **k: "OK")
+    with pytest.raises(adb.AdbError):
+        adb.settings_put("global", "foo", "1|cat")
+    with pytest.raises(adb.AdbError):
+        adb.settings_put("global", "foo", "1&cmd")
+
+
+def test_settings_put_rejects_dollar(monkeypatch):
+    monkeypatch.setattr(adb, "shell", lambda *a, **k: "OK")
+    with pytest.raises(adb.AdbError):
+        adb.settings_put("global", "foo", "$(id)")
+
+
+def test_settings_put_rejects_bad_namespace(monkeypatch):
+    monkeypatch.setattr(adb, "shell", lambda *a, **k: "OK")
+    with pytest.raises(adb.AdbError, match="namespace"):
+        adb.settings_put("global; rm /sdcard", "foo", "1")
+
+
+def test_settings_put_rejects_bad_key(monkeypatch):
+    monkeypatch.setattr(adb, "shell", lambda *a, **k: "OK")
+    with pytest.raises(adb.AdbError, match="key"):
+        adb.settings_put("global", "foo;bar", "1")
+
+
+def test_settings_put_accepts_normal_values(monkeypatch):
+    """Sanity — value bình thường vẫn pass."""
+    received = []
+    monkeypatch.setattr(adb, "shell", lambda cmd, **kw: received.append(cmd) or "OK")
+    # int
+    adb.settings_put("global", "screen_off_timeout", "30000")
+    # float (dot)
+    adb.settings_put("global", "window_animation_scale", "0.5")
+    # DNS hostname (dot, dash)
+    adb.settings_put("global", "private_dns_specifier", "1dot1dot1dot1.cloudflare-dns.com")
+    # empty (clear)
+    adb.settings_put("global", "private_dns_specifier", "")
+    assert len(received) == 4
+
+
+def test_settings_get_also_validates(monkeypatch):
+    monkeypatch.setattr(adb, "shell", lambda *a, **k: "OK")
+    with pytest.raises(adb.AdbError):
+        adb.settings_get("global", "key;rm /sdcard")
+
+
+def test_device_config_get_also_validates(monkeypatch):
+    monkeypatch.setattr(adb, "shell", lambda *a, **k: "OK")
+    with pytest.raises(adb.AdbError):
+        adb.device_config_get("ns;bad", "key")
