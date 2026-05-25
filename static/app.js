@@ -74,6 +74,90 @@ function toast(msg, type = "info") {
   setTimeout(() => el.remove(), 4500);
 }
 
+// ---------- activity log ----------
+
+const MAX_LOG_ENTRIES = 500;
+const LOG_BUFFER = [];
+
+function _logTime(d) {
+  const pad = n => String(n).padStart(2, "0");
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+const _LOG_ICONS = {
+  info: "•",
+  success: "✓",
+  error: "✗",
+  warn: "⚠",
+  action: "▶",
+};
+
+function logEntry(message, type = "info") {
+  const time = _logTime(new Date());
+  LOG_BUFFER.push({ time, type, message, ts: Date.now() });
+  if (LOG_BUFFER.length > MAX_LOG_ENTRIES) LOG_BUFFER.shift();
+
+  const body = $("#log-body");
+  if (!body) return;
+
+  // Remove placeholder on first real entry
+  const empty = body.querySelector(".log-empty");
+  if (empty) empty.remove();
+
+  const div = document.createElement("div");
+  div.className = `log-entry ${type}`;
+  const t = document.createElement("span"); t.className = "log-time"; t.textContent = time;
+  const i = document.createElement("span"); i.className = "log-icon"; i.textContent = _LOG_ICONS[type] || "•";
+  const m = document.createElement("span"); m.className = "log-message"; m.textContent = message;
+  div.appendChild(t); div.appendChild(i); div.appendChild(m);
+  body.appendChild(div);
+
+  // Auto-scroll to newest
+  body.scrollTop = body.scrollHeight;
+
+  // Limit DOM nodes
+  while (body.children.length > MAX_LOG_ENTRIES) body.removeChild(body.firstChild);
+
+  const countEl = $("#log-count");
+  if (countEl) countEl.textContent = `(${LOG_BUFFER.length})`;
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  const panel = $("#activity-log");
+  const header = $("#log-header");
+  if (header && panel) {
+    header.addEventListener("click", e => {
+      if (e.target.closest(".log-btn")) return;
+      panel.classList.toggle("collapsed");
+    });
+  }
+  const clearBtn = $("#log-clear");
+  if (clearBtn) clearBtn.addEventListener("click", e => {
+    e.stopPropagation();
+    LOG_BUFFER.length = 0;
+    const body = $("#log-body");
+    if (body) body.innerHTML = `<div class="log-empty">Đã xoá log.</div>`;
+    $("#log-count").textContent = "(0)";
+  });
+  const dlBtn = $("#log-download");
+  if (dlBtn) dlBtn.addEventListener("click", e => {
+    e.stopPropagation();
+    if (LOG_BUFFER.length === 0) { toast("Log trống", "warn"); return; }
+    const text = LOG_BUFFER
+      .map(e => `${e.time}  [${e.type.toUpperCase().padEnd(7)}] ${e.message}`)
+      .join("\n");
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    a.download = `sony-tool-log-${ts}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
+  });
+});
+
 async function api(path, opts = {}) {
   const res = await fetch(API + path, {
     headers: { "Content-Type": "application/json" },
@@ -166,9 +250,11 @@ async function refreshStatus() {
       return;
     }
 
+    const wasConnected = STATE.serial === data.active_serial;
     STATE.serial = data.active_serial;
     $("#status .dot").className = "dot online";
     $("#status .status-text").textContent = `${data.device_info?.model || data.active_serial}`;
+    if (!wasConnected) logEntry(`✓ Kết nối: ${data.device_info?.model || data.active_serial}`, "success");
 
     const info = data.device_info || {};
     $("#device-info").innerHTML = `
@@ -222,8 +308,10 @@ async function loadPackages() {
     renderStats();
     renderPackagesTable();
     refreshCleanupPreview();
+    logEntry(`Đọc xong ${data.stats.total} app (${data.stats.enabled} bật, ${data.stats.disabled} tắt, ${data.stats.bloat_active} bloat còn chạy)`, "info");
   } catch (e) {
     toast("Lỗi tải app: " + e.message, "error");
+    logEntry(`Đọc danh sách app lỗi: ${e.message}`, "error");
   } finally {
     hideLoading();
   }
@@ -301,6 +389,7 @@ $("#check-all").addEventListener("change", e => {
 });
 
 async function doSingleAction(action, pkg) {
+  const verb = action === "disable" ? "Tắt" : "Bật";
   const endpoint = action === "disable" ? "/api/packages/disable" : "/api/packages/enable";
   try {
     const data = await api(endpoint, {
@@ -309,7 +398,8 @@ async function doSingleAction(action, pkg) {
     });
     const r = data.results[0];
     if (r.ok) {
-      toast(`${action === "disable" ? "Tắt" : "Bật"} ${pkg}: OK`, "success");
+      toast(`${verb} ${pkg}: OK`, "success");
+      logEntry(`${verb} ${pkg}`, "success");
       const p = STATE.packagesByName.get(pkg);
       if (p) p.enabled = action === "enable";
       renderPackagesTable();
@@ -317,9 +407,11 @@ async function doSingleAction(action, pkg) {
       refreshCleanupPreview();
     } else {
       toast(`Lỗi: ${r.message}`, "error");
+      logEntry(`${verb} ${pkg} thất bại: ${r.message}`, "error");
     }
   } catch (e) {
     toast("Lỗi: " + e.message, "error");
+    logEntry(`${verb} ${pkg} lỗi: ${e.message}`, "error");
   }
 }
 
@@ -329,13 +421,13 @@ async function bulkDisable(packages, label = "app") {
     return;
   }
 
+  logEntry(`▶ Bắt đầu tắt ${packages.length} ${label}`, "action");
   showLoading(`Đang tắt ${packages.length} ${label}…`);
   let done = 0;
   let ok = 0;
   let fail = 0;
   const failures = [];
 
-  // Tắt theo batch 10 cho responsive UI
   const batchSize = 10;
   for (let i = 0; i < packages.length; i += batchSize) {
     const batch = packages.slice(i, i + batchSize);
@@ -345,12 +437,19 @@ async function bulkDisable(packages, label = "app") {
         body: JSON.stringify({ packages: batch, serial: STATE.serial }),
       });
       data.results.forEach(r => {
-        if (r.ok) ok++;
-        else { fail++; failures.push(`${r.package}: ${r.message}`); }
+        if (r.ok) {
+          ok++;
+          logEntry(`Tắt ${r.package}`, "success");
+        } else {
+          fail++;
+          failures.push(`${r.package}: ${r.message}`);
+          logEntry(`Tắt ${r.package} lỗi: ${r.message}`, "error");
+        }
       });
     } catch (e) {
       fail += batch.length;
       failures.push(`Batch lỗi: ${e.message}`);
+      logEntry(`Batch ${i}-${i + batch.length} lỗi: ${e.message}`, "error");
     }
     done += batch.length;
     updateProgress(done, packages.length, `Đang tắt… ${done}/${packages.length}`);
@@ -358,6 +457,7 @@ async function bulkDisable(packages, label = "app") {
 
   hideLoading();
   toast(`Hoàn tất: ${ok} tắt, ${fail} lỗi`, fail === 0 ? "success" : "warn");
+  logEntry(`Hoàn tất tắt: ${ok}/${packages.length} OK${fail ? `, ${fail} lỗi` : ""}`, fail === 0 ? "success" : "warn");
   if (failures.length) console.warn("Failures:\n" + failures.join("\n"));
   await loadPackages();
 }
@@ -367,16 +467,23 @@ async function bulkEnable(packages) {
     toast("Chưa chọn app nào", "warn");
     return;
   }
+  logEntry(`▶ Bắt đầu bật ${packages.length} app`, "action");
   showLoading(`Đang bật ${packages.length} app…`);
   try {
     const data = await api("/api/packages/enable", {
       method: "POST",
       body: JSON.stringify({ packages, serial: STATE.serial }),
     });
-    const ok = data.results.filter(r => r.ok).length;
+    let ok = 0;
+    data.results.forEach(r => {
+      if (r.ok) { ok++; logEntry(`Bật ${r.package}`, "success"); }
+      else logEntry(`Bật ${r.package} lỗi: ${r.message}`, "error");
+    });
     toast(`Bật xong: ${ok}/${packages.length}`, "success");
+    logEntry(`Hoàn tất bật: ${ok}/${packages.length}`, ok === packages.length ? "success" : "warn");
   } catch (e) {
     toast("Lỗi: " + e.message, "error");
+    logEntry(`Bật lỗi: ${e.message}`, "error");
   } finally {
     hideLoading();
     await loadPackages();
@@ -596,13 +703,20 @@ async function doOneClick(bloatPkgs, mode = "uninstall") {
     updateProgress(stepDone, totalSteps, label);
   };
 
+  logEntry(`🚀 Tinh giản 1-click bắt đầu (${verb} ${bloatPkgs.length} app + ${ONE_CLICK_PRESETS.length} preset)`, "action");
+
+  // Auto-expand log nếu đang collapsed
+  $("#activity-log")?.classList.remove("collapsed");
+
   showLoading(`Bước 1/3: Tạo backup…`);
   try {
-    await api(`/api/backup?serial=${encodeURIComponent(STATE.serial)}`);
+    const backupData = await api(`/api/backup?serial=${encodeURIComponent(STATE.serial)}`);
     tick("Backup xong");
+    logEntry(`💾 Backup tạo xong: ${backupData.file}`, "success");
   } catch (e) {
     hideLoading();
     toast("Backup thất bại: " + e.message, "error");
+    logEntry(`💾 Backup thất bại: ${e.message}`, "error");
     return;
   }
 
@@ -618,34 +732,53 @@ async function doOneClick(bloatPkgs, mode = "uninstall") {
         body: JSON.stringify({ packages: batch, serial: STATE.serial }),
       });
       data.results.forEach(r => {
-        if (r.ok) okBloat++;
-        else { failBloat++; failures.push(`${r.package}: ${r.message}`); }
+        if (r.ok) {
+          okBloat++;
+          logEntry(`${verb} ${r.package}`, "success");
+        } else {
+          failBloat++;
+          failures.push(`${r.package}: ${r.message}`);
+          logEntry(`${verb} ${r.package} lỗi: ${r.message}`, "error");
+        }
       });
     } catch (e) {
       failBloat += batch.length;
       failures.push(`Batch error: ${e.message}`);
+      logEntry(`Batch lỗi: ${e.message}`, "error");
     }
     stepDone += batch.length;
     updateProgress(stepDone, totalSteps, `Bước 2/3: ${verb} app rác (${okBloat}/${bloatPkgs.length})…`);
   }
 
+  logEntry(`✅ ${verb} app rác xong: ${okBloat}/${bloatPkgs.length}${failBloat ? `, ${failBloat} lỗi` : ""}`, failBloat === 0 ? "success" : "warn");
+
   // Step 3: áp dụng presets
   let okPreset = 0, failPreset = 0;
   for (const presetId of ONE_CLICK_PRESETS) {
     try {
-      await api("/api/optimize/apply", {
+      const presetData = await api("/api/optimize/apply", {
         method: "POST",
         body: JSON.stringify({ preset_id: presetId, serial: STATE.serial }),
       });
-      okPreset++;
+      const stepFails = (presetData.results || []).filter(r => !r.ok).length;
+      if (stepFails === 0) {
+        okPreset++;
+        logEntry(`⚡ Áp dụng ${presetId}`, "success");
+      } else {
+        failPreset++;
+        logEntry(`⚡ ${presetId} áp dụng 1 phần (${stepFails} step lỗi)`, "warn");
+      }
     } catch (e) {
       failPreset++;
       failures.push(`Preset ${presetId}: ${e.message}`);
+      logEntry(`⚡ ${presetId} lỗi: ${e.message}`, "error");
     }
     tick(`Bước 3/3: Tối ưu (${okPreset}/${ONE_CLICK_PRESETS.length})…`);
   }
 
   hideLoading();
+
+  logEntry(`✨ Hoàn tất 1-click: ${okBloat} app + ${okPreset} preset thành công`, "success");
 
   if (failures.length) console.warn("1-click failures:\n" + failures.join("\n"));
 
@@ -729,16 +862,24 @@ async function applyPreset(id, action) {
     toast("Chưa kết nối máy", "warn");
     return;
   }
+  const verb = action === "apply" ? "⚡ Áp dụng" : "↩ Khôi phục";
   try {
     const data = await api(`/api/optimize/${action}`, {
       method: "POST",
       body: JSON.stringify({ preset_id: id, serial: STATE.serial }),
     });
     const ok = data.results.filter(r => r.ok).length;
-    const fail = data.results.length - ok;
-    toast(`${action === "apply" ? "Áp dụng" : "Khôi phục"} "${data.preset}": ${ok} ok${fail ? ", " + fail + " lỗi" : ""}`, fail === 0 ? "success" : "warn");
+    const total = data.results.length;
+    const fail = total - ok;
+    toast(`${verb} "${data.preset}": ${ok} ok${fail ? ", " + fail + " lỗi" : ""}`, fail === 0 ? "success" : "warn");
+    logEntry(`${verb} "${data.preset}" (${ok}/${total})`, fail === 0 ? "success" : "warn");
+    // Chi tiết từng step nếu fail
+    if (fail > 0) {
+      data.results.filter(r => !r.ok).forEach(r => logEntry(`  ↳ step lỗi: ${r.step}: ${r.message}`, "error"));
+    }
   } catch (e) {
     toast("Lỗi: " + e.message, "error");
+    logEntry(`${verb} preset ${id} lỗi: ${e.message}`, "error");
   }
 }
 
@@ -749,7 +890,8 @@ $("#btn-export-full").addEventListener("click", async () => {
     toast("Chưa kết nối máy", "warn");
     return;
   }
-  showLoading("Đang đọc package + services + getprop…");
+  showLoading("Đang đọc package + services + getprop + settings…");
+  logEntry("📤 Bắt đầu export chi tiết…", "action");
   try {
     const data = await api(`/api/export-full?serial=${encodeURIComponent(STATE.serial)}`);
     $("#export-status").innerHTML = `
@@ -758,9 +900,11 @@ $("#btn-export-full").addEventListener("click", async () => {
       <p class="muted">📤 Gửi file này cho dev qua chat.</p>
     `;
     toast("Export OK", "success");
+    logEntry(`📤 Export: ${data.file} (${data.size_kb} KB, ${data.count} packages)`, "success");
     loadBackups();
   } catch (e) {
     toast("Lỗi export: " + e.message, "error");
+    logEntry(`📤 Export lỗi: ${e.message}`, "error");
   } finally {
     hideLoading();
   }
@@ -775,9 +919,11 @@ $("#btn-create-backup").addEventListener("click", async () => {
     const data = await api(`/api/backup?serial=${encodeURIComponent(STATE.serial)}`);
     $("#backup-status").innerHTML = `<p style="color: var(--success);margin-top:12px">✅ Đã tạo: <code>${data.file}</code> (${data.count} app)</p>`;
     toast("Backup OK", "success");
+    logEntry(`💾 Backup: ${data.file} (${data.count} app)`, "success");
     loadBackups();
   } catch (e) {
     toast("Lỗi backup: " + e.message, "error");
+    logEntry(`💾 Backup lỗi: ${e.message}`, "error");
   }
 });
 

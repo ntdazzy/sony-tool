@@ -132,6 +132,66 @@ def test_oneclick_apply_uses_correct_endpoint():
         assert match.group(2) == "/api/packages/disable"
 
 
+def test_activity_log_panel_present():
+    """Activity log panel — đảm bảo có đủ HTML + CSS + JS."""
+    html = _read(STATIC / "index.html")
+    css = _read(STATIC / "style.css")
+    js = _read(STATIC / "app.js")
+
+    # HTML
+    assert 'id="activity-log"' in html
+    assert 'id="log-header"' in html
+    assert 'id="log-body"' in html
+    assert 'id="log-count"' in html
+    assert 'id="log-clear"' in html
+    assert 'id="log-download"' in html
+
+    # CSS
+    assert ".activity-log" in css
+    assert ".log-entry" in css
+    assert ".log-entry.success" in css
+    assert ".log-entry.error" in css
+    assert ".log-entry.warn" in css
+    assert ".activity-log.collapsed" in css
+
+    # JS
+    assert "function logEntry" in js
+    assert "MAX_LOG_ENTRIES" in js
+    assert "LOG_BUFFER" in js
+
+
+def test_log_uses_textcontent_not_innerhtml_for_message():
+    """Tin nhắn log phải đi qua textContent — chống XSS qua tên package."""
+    js = _read(STATIC / "app.js")
+    # Tìm hàm logEntry
+    fn = re.search(r"function logEntry\([^)]*\)\s*\{(.+?)\n\}", js, re.DOTALL)
+    assert fn, "Không tìm thấy hàm logEntry"
+    body = fn.group(1)
+    # Tin nhắn user-supplied phải dùng textContent, KHÔNG innerHTML
+    assert ".textContent = message" in body, "logEntry phải dùng textContent cho message (chống XSS)"
+
+
+def test_critical_actions_have_log_entries():
+    """Các action quan trọng (disable, enable, apply preset, 1-click) phải gọi logEntry."""
+    js = _read(STATIC / "app.js")
+    # Tìm trong từng function
+    checks = [
+        ("doSingleAction", "logEntry"),
+        ("bulkDisable", "logEntry"),
+        ("bulkEnable", "logEntry"),
+        ("applyPreset", "logEntry"),
+        ("doOneClick", "logEntry"),
+    ]
+    for fn_name, marker in checks:
+        m = re.search(rf"function {fn_name}\([^)]*\)\s*\{{(.*?)\n\}}", js, re.DOTALL)
+        # async function biến thể
+        if not m:
+            m = re.search(rf"async function {fn_name}\([^)]*\)\s*\{{(.*?)\n\}}", js, re.DOTALL)
+        assert m, f"Không tìm thấy function {fn_name}"
+        body = m.group(1)
+        assert marker in body, f"{fn_name} không gọi {marker} — sẽ không hiển thị trong activity log"
+
+
 def test_safe_list_count_matches_readme():
     """README nói '76 package' — kiểm tra match với reality."""
     readme = _read(ROOT / "README.md")
