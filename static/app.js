@@ -1717,11 +1717,25 @@ async function startFlashJob() {
   $("#flash-log").textContent = "";
   FLASH.startTime = Date.now();
 
+  const flashTa = !!$("#chk-flash-ta")?.checked;
+  if (flashTa) {
+    const confirmed = confirm(
+      "⚠️ Bạn đang chọn flash TA partition.\n\n" +
+      "Hậu quả nếu sai:\n" +
+      "• Mất Widevine L1 → Netflix/Disney+ chỉ còn 480p\n" +
+      "• Mất camera tunings → màu sắc + AI scene sai\n" +
+      "• Có thể trigger SafetyNet fail → mất banking apps\n\n" +
+      "Tiếp tục?"
+    );
+    if (!confirmed) return;
+    logEntry("⚠️ Flash TA = TRUE (expert mode)", "warn");
+  }
+
   let job;
   try {
     job = await api("/api/rom/flash/start", {
       method: "POST",
-      body: JSON.stringify({ rom_dir: FLASH.romDir }),
+      body: JSON.stringify({ rom_dir: FLASH.romDir, flash_ta: flashTa }),
     });
   } catch (e) {
     $("#circle-sub").textContent = "Lỗi";

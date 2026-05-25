@@ -31,6 +31,15 @@ VENDOR_DIR = ROOT / "vendor"
 # Windows dùng newflasher.exe, Mac/Linux dùng newflasher (không extension).
 NEWFLASHER_EXE = VENDOR_DIR / ("newflasher.exe" if os.name == "nt" else "newflasher")
 
+# TA (Trim Area) chứa DRM keys + camera tunings + device fingerprint.
+# Flash sai = mất Widevine L1 (HDR Netflix), camera quality, có thể SafetyNet fail.
+# Newflasher mặc định flash mọi .sin trong cwd → phải rename TA file trước khi
+# chạy. Pattern match khá rộng vì Sony đặt tên khác nhau qua các generation.
+_TA_FILE_PATTERN = re.compile(
+    r"(?i)(?:^|[_-])(?:ta|lta|trim[_-]?area)(?:$|[._-])"
+)
+_SKIPPED_SUFFIX = ".SKIPPED_BY_SONY_TOOL"
+
 # Pattern detect output từ newflasher (đoán theo XDA discussion + source code)
 _RE_FLASHING = re.compile(r"(?:flashing|writing|sending)\s+(.+?)(?:\.\.\.|\s*$)", re.IGNORECASE)
 _RE_PERCENT = re.compile(r"(\d+(?:\.\d+)?)\s*%")
@@ -98,6 +107,48 @@ def _count_partitions(rom_dir: Path) -> int:
     return sum(1 for p in rom_dir.iterdir() if p.is_file() and p.suffix.lower() in extensions)
 
 
+def filter_unsafe_files(rom_dir: Path, flash_ta: bool = False) -> dict:
+    """Rename file nguy hiểm sang .SKIPPED_BY_SONY_TOOL để newflasher bỏ qua.
+    Trả về dict {'skipped': [...], 'kept': [...]} cho UI hiển thị.
+
+    Args:
+        rom_dir: folder chứa .sin
+        flash_ta: True = expert mode, KHÔNG skip TA (mặc định False = an toàn)
+    """
+    skipped: list[str] = []
+    kept: list[str] = []
+    for f in rom_dir.iterdir():
+        if not f.is_file():
+            continue
+        if not f.name.lower().endswith(".sin"):
+            continue
+        # File-key thường nằm trong tên trước phần mở rộng. Vd:
+        #   partition-image-ta-1.sin, ta.sin, ltalabel.sin → match
+        #   system.sin, vendor.sin → không match
+        stem_lower = f.stem.lower()
+        is_ta = bool(_TA_FILE_PATTERN.search(stem_lower))
+        if is_ta and not flash_ta:
+            target = f.with_name(f.name + _SKIPPED_SUFFIX)
+            f.rename(target)
+            skipped.append(f.name)
+        else:
+            kept.append(f.name)
+    return {"skipped": skipped, "kept": kept}
+
+
+def restore_skipped_files(rom_dir: Path) -> list[str]:
+    """Khôi phục file đã skip về tên gốc (cho phép retry flash với cùng folder)."""
+    restored: list[str] = []
+    if not rom_dir.exists():
+        return restored
+    for f in rom_dir.iterdir():
+        if f.is_file() and f.name.endswith(_SKIPPED_SUFFIX):
+            original = f.with_name(f.name[: -len(_SKIPPED_SUFFIX)])
+            f.rename(original)
+            restored.append(original.name)
+    return restored
+
+
 def _parse_output_line(line: str, progress: FlashProgress) -> bool:
     """Parse 1 dòng stdout của newflasher, update progress. Trả True nếu match pattern."""
     line_stripped = line.strip()
@@ -137,6 +188,7 @@ class FlashJob:
     cancel_event: threading.Event
     thread: threading.Thread
     started_at: float
+    flash_ta: bool = False
     process: subprocess.Popen | None = None
 
 
@@ -168,6 +220,30 @@ def _run_newflasher(job: FlashJob) -> None:
         progress.error = f"ROM folder không tồn tại: {job.rom_dir}"
         job.progress_queue.put(progress.snapshot())
         return
+
+    # Safety filter: rename file nguy hiểm trước khi spawn newflasher.
+    # Mặc định skip TA (DRM keys, camera tunings). User opt-in flash_ta=True
+    # để override (expert mode).
+    try:
+        filter_result = filter_unsafe_files(job.rom_dir, flash_ta=job.flash_ta)
+    except OSError as e:
+        progress.state = "error"
+        progress.error = f"Safety filter lỗi: {e}"
+        job.progress_queue.put(progress.snapshot())
+        return
+
+    if filter_result["skipped"]:
+        msg = f"[safety] Đã skip {len(filter_result['skipped'])} file TA: {', '.join(filter_result['skipped'])}"
+        logger.warning(msg)
+        progress.log_lines.append(msg)
+        progress.log_lines.append("[safety] Lý do: TA chứa DRM keys + camera tunings — flash sai làm mất HDR Netflix, camera quality.")
+    if job.flash_ta and filter_result["kept"]:
+        ta_files = [f for f in filter_result["kept"] if _TA_FILE_PATTERN.search(Path(f).stem.lower())]
+        if ta_files:
+            progress.log_lines.append(f"[WARNING] Expert mode ON — sẽ flash TA file: {', '.join(ta_files)}")
+    # Update count sau khi rename
+    progress.partitions_total = _count_partitions(job.rom_dir)
+    job.progress_queue.put(progress.snapshot())
 
     # Newflasher đọc current working dir → cwd=rom_dir
     kwargs: dict = {
@@ -226,8 +302,13 @@ def _run_newflasher(job: FlashJob) -> None:
     job.progress_queue.put(progress.snapshot())
 
 
-def start_flash_job(rom_dir: Path) -> FlashJob:
-    """Spawn worker thread chạy newflasher trên rom_dir. Trả job_id để client subscribe SSE."""
+def start_flash_job(rom_dir: Path, flash_ta: bool = False) -> FlashJob:
+    """Spawn worker thread chạy newflasher trên rom_dir. Trả job_id để client subscribe SSE.
+
+    Args:
+        rom_dir: folder chứa .sin
+        flash_ta: True = expert mode flash cả TA (RISK: mất DRM/camera). Default False.
+    """
     import secrets
     job_id = secrets.token_urlsafe(12)
     queue: Queue = Queue(maxsize=500)
@@ -238,6 +319,7 @@ def start_flash_job(rom_dir: Path) -> FlashJob:
         progress_queue=queue, cancel_event=cancel,
         thread=None,  # type: ignore[arg-type]
         started_at=time.time(),
+        flash_ta=flash_ta,
     )
 
     thread = threading.Thread(target=_run_newflasher, args=(job,), name=f"flash-{job_id}", daemon=True)

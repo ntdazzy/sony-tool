@@ -862,7 +862,8 @@ def rom_check_newflasher():
 
 
 class FlashStart(BaseModel):
-    rom_dir: str  # absolute path đến folder chứa .sin files
+    rom_dir: str        # absolute path đến folder chứa .sin files
+    flash_ta: bool = False  # Default False = an toàn (skip TA). True = expert risk DRM/camera.
 
 
 @app.post("/api/rom/flash/start")
@@ -897,7 +898,7 @@ def rom_flash_start(req: FlashStart):
         )
     # Nếu pyusb không available, vẫn cho phép start (user xác nhận manual)
 
-    job = flash_runner.start_flash_job(rom_path)
+    job = flash_runner.start_flash_job(rom_path, flash_ta=req.flash_ta)
     return {"job_id": job.job_id}
 
 

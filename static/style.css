@@ -1524,6 +1524,28 @@ header h1 + p.subtitle { display: none; } /* hide old subtitle if present */
 
 .fm-help { font-size: 12px; margin-top: 10px; text-align: center; line-height: 1.5; }
 
+.ta-expert-section {
+  margin: 14px 0 0;
+  padding: 8px 14px;
+  background: var(--surface-2);
+  border-radius: var(--r-sm);
+}
+.ta-expert-section summary {
+  cursor: pointer; font-size: 13px; color: var(--text-3);
+  padding: 4px 0;
+}
+.ta-expert-section[open] summary { color: var(--text-2); }
+.ta-expert-toggle {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 10px 4px 4px;
+  font-size: 13px; cursor: pointer;
+}
+.ta-expert-toggle input[type="checkbox"] { margin-top: 3px; flex-shrink: 0; }
+.ta-expert-toggle small {
+  display: block; margin-top: 4px;
+  color: var(--text-3); font-size: 12px; line-height: 1.5;
+}
+
 /* ---- Stage B: Big circle progress ---- */
 
 .circle-progress {

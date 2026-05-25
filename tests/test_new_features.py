@@ -217,3 +217,69 @@ def test_total_preset_count_increased():
     presets = json.loads((DATA / "optimize_presets.json").read_text(encoding="utf-8"))["presets"]
     # Was 23, now 23 + 4 new = 27
     assert len(presets) >= 27
+
+
+# ============ Safety filter: TA partition skip ============
+
+
+def test_filter_skips_ta_files(tmp_path):
+    """File có 'TA' trong name phải bị rename .SKIPPED khi flash_ta=False."""
+    import flash_runner
+    (tmp_path / "boot.sin").write_bytes(b"x")
+    (tmp_path / "system.sin").write_bytes(b"x")
+    (tmp_path / "partition-image-ta-1.sin").write_bytes(b"x")
+    (tmp_path / "ta.sin").write_bytes(b"x")
+
+    r = flash_runner.filter_unsafe_files(tmp_path, flash_ta=False)
+    assert sorted(r["skipped"]) == ["partition-image-ta-1.sin", "ta.sin"]
+    assert sorted(r["kept"]) == ["boot.sin", "system.sin"]
+    # File đã rename
+    assert (tmp_path / ("partition-image-ta-1.sin" + flash_runner._SKIPPED_SUFFIX)).exists()
+    assert not (tmp_path / "ta.sin").exists()
+
+
+def test_filter_keeps_ta_when_expert_mode(tmp_path):
+    """flash_ta=True (expert) → giữ nguyên TA file."""
+    import flash_runner
+    (tmp_path / "boot.sin").write_bytes(b"x")
+    (tmp_path / "ta.sin").write_bytes(b"x")
+
+    r = flash_runner.filter_unsafe_files(tmp_path, flash_ta=True)
+    assert r["skipped"] == []
+    assert sorted(r["kept"]) == ["boot.sin", "ta.sin"]
+    assert (tmp_path / "ta.sin").exists()
+
+
+def test_filter_does_not_skip_system_or_vendor(tmp_path):
+    """False positive check — file system/vendor không bị nhầm với TA."""
+    import flash_runner
+    for name in ["system.sin", "vendor.sin", "modem.sin", "boot.sin", "stage_2.sin", "metadata.sin"]:
+        (tmp_path / name).write_bytes(b"x")
+
+    r = flash_runner.filter_unsafe_files(tmp_path, flash_ta=False)
+    assert r["skipped"] == []
+    assert len(r["kept"]) == 6
+
+
+def test_filter_matches_lta_and_trim_area(tmp_path):
+    """Variants TA: lta.sin, trim-area.sin, trim_area.sin."""
+    import flash_runner
+    (tmp_path / "lta.sin").write_bytes(b"x")
+    (tmp_path / "trim-area.sin").write_bytes(b"x")
+    (tmp_path / "system.sin").write_bytes(b"x")
+
+    r = flash_runner.filter_unsafe_files(tmp_path, flash_ta=False)
+    assert sorted(r["skipped"]) == ["lta.sin", "trim-area.sin"]
+    assert r["kept"] == ["system.sin"]
+
+
+def test_restore_skipped_files(tmp_path):
+    """restore_skipped_files đổi tên ngược lại original."""
+    import flash_runner
+    (tmp_path / "ta.sin").write_bytes(b"x")
+    (tmp_path / "boot.sin").write_bytes(b"x")
+    flash_runner.filter_unsafe_files(tmp_path, flash_ta=False)
+    assert not (tmp_path / "ta.sin").exists()
+    restored = flash_runner.restore_skipped_files(tmp_path)
+    assert restored == ["ta.sin"]
+    assert (tmp_path / "ta.sin").exists()
