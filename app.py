@@ -142,6 +142,131 @@ def optimize_presets():
     return _load_json("optimize_presets.json")
 
 
+def _normalize_value(v: str | None) -> str:
+    """Chuẩn hoá value để so sánh ('null', '', None đều == default)."""
+    if v is None:
+        return ""
+    s = v.strip().lower()
+    if s in ("null", "none", ""):
+        return ""
+    return s
+
+
+def _parse_shell_step(shell_cmd: str) -> dict | None:
+    """Parse `device_config put <ns> <key> <val>` hoặc `settings put <ns> <key> <val>`."""
+    parts = shell_cmd.strip().split(maxsplit=4)
+    if len(parts) >= 5 and parts[0] in ("device_config", "settings") and parts[1] == "put":
+        return {"tool": parts[0], "namespace": parts[2], "key": parts[3], "expected": parts[4]}
+    return None
+
+
+@app.get("/api/optimize/state")
+def optimize_state(serial: str | None = None):
+    """Đọc current value của các setting trong mỗi preset → so sánh với apply target.
+    Trả về state cho mỗi preset: applied / partial / default / unknown."""
+    presets = _load_json("optimize_presets.json")["presets"]
+    if not adb.adb_available():
+        raise HTTPException(status_code=400, detail="ADB chưa cài.")
+
+    out = []
+    for preset in presets:
+        steps_status: list[dict] = []
+        readable_count = 0
+        match_count = 0
+
+        for step in preset["apply"]:
+            if "namespace" in step:
+                # `settings put <ns> <key> <val>` style
+                try:
+                    current = adb.settings_get(step["namespace"], step["key"], serial=serial)
+                except adb.AdbError as e:
+                    steps_status.append({
+                        "type": "settings",
+                        "namespace": step["namespace"],
+                        "key": step["key"],
+                        "expected": step["value"],
+                        "current": None,
+                        "matches": None,
+                        "error": str(e),
+                    })
+                    continue
+                norm_current = _normalize_value(current)
+                norm_expected = _normalize_value(step["value"])
+                matches = norm_current == norm_expected
+                readable_count += 1
+                if matches:
+                    match_count += 1
+                steps_status.append({
+                    "type": "settings",
+                    "namespace": step["namespace"],
+                    "key": step["key"],
+                    "expected": step["value"],
+                    "current": current,
+                    "matches": matches,
+                })
+            elif "shell" in step:
+                parsed = _parse_shell_step(step["shell"])
+                if parsed:
+                    try:
+                        if parsed["tool"] == "device_config":
+                            current = adb.device_config_get(parsed["namespace"], parsed["key"], serial=serial)
+                        else:
+                            current = adb.settings_get(parsed["namespace"], parsed["key"], serial=serial)
+                    except adb.AdbError as e:
+                        steps_status.append({
+                            "type": parsed["tool"],
+                            "namespace": parsed["namespace"],
+                            "key": parsed["key"],
+                            "expected": parsed["expected"],
+                            "current": None,
+                            "matches": None,
+                            "error": str(e),
+                        })
+                        continue
+                    norm_current = _normalize_value(current)
+                    norm_expected = _normalize_value(parsed["expected"])
+                    matches = norm_current == norm_expected
+                    readable_count += 1
+                    if matches:
+                        match_count += 1
+                    steps_status.append({
+                        "type": parsed["tool"],
+                        "namespace": parsed["namespace"],
+                        "key": parsed["key"],
+                        "expected": parsed["expected"],
+                        "current": current,
+                        "matches": matches,
+                    })
+                else:
+                    # Shell command không parse được (dumpsys, setprop...) — coi như unknown
+                    steps_status.append({
+                        "type": "shell",
+                        "command": step["shell"],
+                        "matches": None,
+                    })
+
+        # Xác định state của preset
+        if readable_count == 0:
+            preset_state = "unknown"
+        elif match_count == readable_count:
+            preset_state = "applied"
+        elif match_count == 0:
+            preset_state = "default"
+        else:
+            preset_state = "partial"
+
+        out.append({
+            "id": preset["id"],
+            "title": preset["title"],
+            "state": preset_state,
+            "readable_steps": readable_count,
+            "matching_steps": match_count,
+            "steps": steps_status,
+        })
+
+    return {"presets": out}
+
+
 def _check_safe(packages: list[str]) -> list[str]:
     safe = _safe_set()
     return [p for p in packages if p in safe]

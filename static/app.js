@@ -212,6 +212,7 @@ $$(".tab").forEach(btn => {
     if (id === "all" && STATE.packages.length === 0) loadPackages();
     if (id === "backup") loadBackups();
     if (id === "cleanup") refreshCleanupPreview();
+    if (id === "optimize" && STATE.serial) loadPresetStates();
   });
 });
 
@@ -832,10 +833,11 @@ async function loadPresets() {
       <div class="preset-group">
         <h3 class="preset-group-title">${cat}</h3>
         ${items.map(p => `
-          <div class="preset-item">
+          <div class="preset-item" data-preset-id="${p.id}">
             <div class="preset-head">
               <span class="preset-icon">${p.icon || "⚙️"}</span>
               <h4>${p.title}</h4>
+              <span class="preset-state preset-state-unknown" data-state-badge>—</span>
             </div>
             <p>${p.description}</p>
             ${p.warning ? `<p class="preset-warning">⚠️ ${p.warning}</p>` : ""}
@@ -851,10 +853,49 @@ async function loadPresets() {
     $("#presets-list").innerHTML = html;
 
     $$(".preset-item button").forEach(btn => {
-      btn.addEventListener("click", () => applyPreset(btn.dataset.id, btn.dataset.action));
+      btn.addEventListener("click", async () => {
+        await applyPreset(btn.dataset.id, btn.dataset.action);
+        // Refresh state badge sau khi apply/revert
+        if (STATE.serial) loadPresetStates();
+      });
     });
+
+    // Load state ngay nếu có device
+    if (STATE.serial) loadPresetStates();
   } catch (e) {
     $("#presets-list").innerHTML = `<p style="color: var(--danger)">Lỗi: ${e.message}</p>`;
+  }
+}
+
+const STATE_LABEL = {
+  applied: "Đã áp dụng",
+  default: "Mặc định",
+  partial: "1 phần",
+  unknown: "—",
+};
+
+async function loadPresetStates() {
+  if (!STATE.serial) return;
+  try {
+    const data = await api(`/api/optimize/state?serial=${encodeURIComponent(STATE.serial)}`);
+    for (const ps of data.presets) {
+      const item = document.querySelector(`.preset-item[data-preset-id="${ps.id}"]`);
+      if (!item) continue;
+      const badge = item.querySelector("[data-state-badge]");
+      if (!badge) continue;
+      badge.className = `preset-state preset-state-${ps.state}`;
+      badge.textContent = STATE_LABEL[ps.state] || ps.state;
+      // Tooltip với chi tiết
+      const detail = ps.steps
+        .filter(s => "matches" in s && s.matches !== null)
+        .map(s => `${s.namespace || s.type}/${s.key || s.command}: ${s.current ?? "?"} → ${s.expected ?? "?"}`)
+        .join("\n");
+      if (detail) badge.title = detail;
+    }
+    logEntry(`Đọc state ${data.presets.length} preset từ máy`, "info");
+  } catch (e) {
+    // Không log lỗi to — chỉ silent fail, state vẫn unknown
+    console.warn("loadPresetStates:", e.message);
   }
 }
 

@@ -958,13 +958,46 @@ td b { color: var(--text); font-weight: 500; }
   gap: 10px;
   margin-bottom: 4px;
 }
-.preset-icon { font-size: 14px; opacity: 0.7; }
+.preset-icon { font-size: 14px; opacity: 0.7; flex-shrink: 0; }
 .preset-item h4 {
   margin: 0;
   font-size: 13px;
   font-weight: 600;
   color: var(--text);
   letter-spacing: -0.005em;
+  flex: 1;
+}
+.preset-state {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: var(--r-pill);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border: 1px solid transparent;
+  flex-shrink: 0;
+}
+.preset-state-applied {
+  background: var(--success-soft);
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 25%, transparent);
+}
+.preset-state-default {
+  background: var(--surface-2);
+  color: var(--text-3);
+  border-color: var(--border);
+}
+.preset-state-partial {
+  background: var(--warn-soft);
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 25%, transparent);
+}
+.preset-state-unknown {
+  background: var(--surface-2);
+  color: var(--text-4);
+  border-color: var(--border);
 }
 .preset-item p {
   margin: 0 0 10px;

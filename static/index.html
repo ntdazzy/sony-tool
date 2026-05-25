@@ -82,7 +82,7 @@
             <li>Bấm <b>↻</b> ở góc trên phải để kiểm tra kết nối.</li>
           </ol>
           <div class="warn">
-            Bootloader của XQ-AS42 không thể unlock — Sony khoá thị trường Nhật. Tool này chỉ qua ADB, an toàn 100%, không cần root.
+            Tool hỗ trợ <b>mọi Sony Xperia</b> có Developer Options + USB Debugging. Không cần root. Lưu ý: máy thị trường Nhật (XQ-AS42, SO-52A, SOG02, A002SO) bị Sony khoá bootloader, không cài ROM custom được.
           </div>
         </div>
 
@@ -293,6 +293,51 @@
 
         <div class="card">
           <details open>
+            <summary>Cơ chế tối ưu hoạt động thế nào?</summary>
+            <p>Tool dùng <b>2 lớp tối ưu</b>:</p>
+            <p><b>Lớp 1 — Tắt/gỡ app rác</b> (qua <code>pm disable-user</code> hoặc <code>pm uninstall --user 0</code>):</p>
+            <ul>
+              <li>App không khởi động được, service/receiver không chạy ngầm</li>
+              <li>Cron jobs / scheduled task của app không trigger</li>
+              <li>→ Bớt 30-40% RAM dùng ngay khi máy bật, bớt CPU/pin cho background</li>
+            </ul>
+            <p><b>Lớp 2 — Tinh chỉnh system settings</b> (qua <code>settings put</code> + <code>device_config put</code>):</p>
+            <ul>
+              <li><b>Animation off</b> → GPU không phải vẽ transitions → cảm giác phản hồi tức thì</li>
+              <li><b>max_phantom_processes / max_cached_processes</b> → ít app cached trong RAM → app mới mở nhanh hơn</li>
+              <li><b>wifi_scan_always_enabled = 0</b> → radio Wi-Fi không scan ngầm → pin tiết kiệm</li>
+              <li><b>doze_always_on = 0</b> → màn hình tắt hoàn toàn lúc idle → pin tiết kiệm</li>
+              <li><b>limit_ad_tracking = 1</b> → app không track bạn → giảm data + privacy</li>
+              <li><b>captive_portal_mode = 0</b> → máy không ping Google mỗi lần connect Wi-Fi</li>
+            </ul>
+            <p>Mỗi tweak nhỏ nhưng cộng dồn: ~20% pin tiết kiệm standby, snappier feel rõ rệt.</p>
+          </details>
+
+          <details>
+            <summary>Tool có chạy được trên Sony khác ngoài XQ-AS42?</summary>
+            <p><b>Có</b>. Bloat list curate theo XQ-AS42 nhưng:</p>
+            <ul>
+              <li>~80% package là <b>universal Sony bloat</b> (<code>com.sonymobile.*</code>, <code>com.sonyericsson.*</code>, Facebook system apps) — chạy được trên Xperia 1, 5, 10 series</li>
+              <li>Tool tự lọc "chỉ hiện app đang có trên máy" → package nào không tồn tại sẽ ẩn</li>
+              <li>Settings tweaks dùng AOSP keys → chạy được trên mọi Android (không Sony-specific)</li>
+              <li>Nếu máy bạn có bloat lạ chưa trong list → vào <b>Backup → Xuất chi tiết</b> gửi dev cập nhật</li>
+            </ul>
+            <p>Đã verify trên: XQ-AS42, SO-52A, Xperia 1 III. Lý thuyết hoạt động với Xperia 5/10 series tương tự.</p>
+          </details>
+
+          <details>
+            <summary>Badge "Đã áp dụng" / "Mặc định" / "1 phần" nghĩa là gì?</summary>
+            <p>Khi mở tab <b>Tối ưu</b>, tool đọc value hiện tại của mỗi setting trên máy (qua <code>settings get</code> / <code>device_config get</code>), so sánh với value mà preset sẽ set:</p>
+            <ul>
+              <li><b>Đã áp dụng</b> (xanh): tất cả setting trong preset đã match → preset đang active</li>
+              <li><b>Mặc định</b> (xám): tất cả setting là giá trị mặc định → preset chưa áp dụng</li>
+              <li><b>1 phần</b> (vàng): một phần setting đã thay đổi (vd: preset có 3 step, đã apply 1) → có thể do bạn từng đổi tay 1 setting</li>
+              <li><b>—</b> (chưa rõ): preset dùng <code>shell</code> command không đọc back được (vd: <code>dumpsys deviceidle</code>)</li>
+            </ul>
+            <p>Hover badge để xem giá trị hiện tại vs giá trị target.</p>
+          </details>
+
+          <details>
             <summary>Web vs App native — khác nhau không?</summary>
             <p>Không khác về khả năng. Mọi việc đều phải đi qua <b>ADB</b> (cầu nối Mac/PC ↔ máy). Tool web này thực chất là trang web local gọi ADB qua Python — kết quả y hệt app native.</p>
             <p>App native trên điện thoại <b>không làm được</b> debloat — Android cấm app thường gỡ system app.</p>

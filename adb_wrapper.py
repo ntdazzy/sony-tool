@@ -197,3 +197,8 @@ def settings_get(namespace: str, key: str, serial: str | None = None) -> str:
 
 def settings_put(namespace: str, key: str, value: str, serial: str | None = None) -> str:
     return shell(f"settings put {namespace} {key} {value}", serial=serial).strip()
+
+
+def device_config_get(namespace: str, key: str, serial: str | None = None) -> str:
+    """Đọc device_config (Android 10+). Trả 'null' nếu chưa set."""
+    return shell(f"device_config get {namespace} {key}", serial=serial).strip()
