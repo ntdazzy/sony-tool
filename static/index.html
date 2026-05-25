@@ -565,6 +565,19 @@
     </div>
   </div>
 
+  <!-- ROM download modal -->
+  <div class="modal-backdrop" id="rom-dl-modal" hidden>
+    <div class="modal" style="max-width:560px">
+      <h3 id="rom-dl-modal-title">Đang tải ROM…</h3>
+      <div id="rom-dl-modal-body" style="margin:14px 0;min-height:120px"></div>
+      <div class="modal-actions">
+        <button class="btn-danger" id="btn-rom-dl-cancel">⏹️ Huỷ</button>
+        <button class="btn-primary" id="btn-rom-dl-flash" hidden>→ Sang Flash</button>
+        <button class="btn-secondary" id="btn-rom-dl-close">Đóng (chạy nền)</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Loading overlay -->
   <div class="loading-overlay" id="loading-overlay" hidden>
     <div class="loading-box">

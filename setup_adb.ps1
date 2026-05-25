@@ -90,6 +90,28 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "[OK] Python deps installed" -ForegroundColor Green
 
+# 5. Create vendor folder + check newflasher.exe (for ROM flashing)
+$vendorDir = Join-Path $scriptDir "vendor"
+if (-not (Test-Path $vendorDir)) {
+    New-Item -ItemType Directory -Path $vendorDir | Out-Null
+}
+$newflasher = Join-Path $vendorDir "newflasher.exe"
+if (-not (Test-Path $newflasher)) {
+    Write-Host ""
+    Write-Host "[INFO] Optional: newflasher.exe missing (only needed for ROM flashing)" -ForegroundColor Yellow
+    Write-Host "        Tool van chay duoc cho debloat/optimize. Khi muon dung tinh nang"
+    Write-Host "        cai ROM, tai newflasher.exe va dat vao:"
+    Write-Host "          $newflasher"
+    Write-Host ""
+    Write-Host "        Source code (MIT license):"
+    Write-Host "          https://github.com/munjeni/newflasher"
+    Write-Host "        Prebuilt binary (XDA community):"
+    Write-Host "          https://xdaforums.com/t/tool-newflasher-xperia-command-line-flasher.3619426/"
+    Write-Host ""
+} else {
+    Write-Host "[OK] newflasher.exe ready: $newflasher" -ForegroundColor Green
+}
+
 Write-Host ""
 Write-Host "================================================" -ForegroundColor Cyan
 Write-Host "[OK] Setup done. Next steps:" -ForegroundColor Green

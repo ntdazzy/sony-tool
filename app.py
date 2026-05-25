@@ -8,7 +8,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -776,6 +776,64 @@ def rom_firmware_list(model_name: str, cust_id: str | None = None):
                 "entries": [],
             })
     return {"model": model.to_dict(), "results": results}
+
+
+class RomDownloadStart(BaseModel):
+    firmware_url: str
+    label: str  # tên hiển thị (vd "XQ-AS42_64.0.A.5.10_keep")
+
+
+@app.post("/api/rom/download/start")
+def rom_download_start(req: RomDownloadStart):
+    """Spawn background thread tải firmware. Client subscribe SSE qua
+    /api/rom/download/stream?job_id=… để xem progress."""
+    import ftf_builder
+
+    if not req.firmware_url.startswith("https://app.swup.update.sony.net/"):
+        raise HTTPException(status_code=400, detail="firmware_url phải là URL Sony chính thức")
+
+    job = ftf_builder.start_download_job(req.firmware_url, req.label)
+    return {"job_id": job.job_id, "output_dir": str(job.output_dir)}
+
+
+@app.get("/api/rom/download/stream")
+def rom_download_stream(job_id: str):
+    """SSE stream — push progress updates về client trong khi download."""
+    import json as _json
+    import ftf_builder
+
+    job = ftf_builder.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} không tồn tại")
+
+    def event_gen():
+        # Drain mọi progress đã queue trước khi client connect
+        while True:
+            try:
+                # block 1s, then heartbeat (chống proxy timeout) nếu queue rỗng và thread vẫn chạy
+                item = job.progress_queue.get(timeout=1.0)
+            except Exception:
+                if not job.thread.is_alive():
+                    # Thread chết, no more events
+                    break
+                yield ": heartbeat\n\n"
+                continue
+            yield f"data: {_json.dumps(item)}\n\n"
+            if item.get("state") in ("done", "error", "cancelled"):
+                break
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",  # tắt nginx buffering nếu proxy
+    })
+
+
+@app.post("/api/rom/download/cancel/{job_id}")
+def rom_download_cancel(job_id: str):
+    import ftf_builder
+    if not ftf_builder.cancel_job(job_id):
+        raise HTTPException(status_code=404, detail=f"Job {job_id} không tồn tại")
+    return {"ok": True}
 
 
 @app.post("/api/rom/refresh-resources")

@@ -1410,14 +1410,13 @@ async function loadRomFirmwareList() {
 
     $("#rom-firmware-list").innerHTML = html || `<p class="muted">Không có firmware cho máy này.</p>`;
 
-    // Wire up download buttons (placeholder — Day 2 sẽ implement download flow)
+    // Wire up download buttons
     $$("#rom-firmware-list button[data-rom-action='download']").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const v = btn.dataset.version;
-        const mode = btn.dataset.mode;
-        toast(`Day 2 chưa làm — sẽ download ${v} (${mode === 'wipe' ? 'wipe' : 'keep data'})`, "warn");
-        logEntry(`📥 ROM download placeholder: ${v} mode=${mode}`, "info");
-      });
+      btn.addEventListener("click", () => startRomDownload({
+        url: btn.dataset.url,
+        version: btn.dataset.version,
+        mode: btn.dataset.mode,
+      }));
     });
 
     logEntry(`📱 ROM: ${data.results.reduce((s, r) => s + r.entries.length, 0)} firmware entries`, "success");
@@ -1427,6 +1426,143 @@ async function loadRomFirmwareList() {
   } finally {
     hideLoading();
   }
+}
+
+// ROM download — SSE progress streaming
+
+let _romDownloadState = { jobId: null, eventSource: null };
+
+function _humanBytes(n) {
+  if (!n || n < 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let i = 0, v = n;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return `${v.toFixed(v >= 100 ? 0 : 1)} ${units[i]}`;
+}
+
+function _humanDuration(seconds) {
+  if (!seconds || seconds < 0 || !isFinite(seconds)) return "—";
+  const s = Math.round(seconds);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60), rs = s % 60;
+  if (m < 60) return `${m}m ${rs}s`;
+  const h = Math.floor(m / 60), rm = m % 60;
+  return `${h}h ${rm}m`;
+}
+
+function _updateRomDownloadUI(p) {
+  const wrap = $("#rom-dl-modal-body");
+  if (!wrap) return;
+  if (p.state === "list_files") {
+    wrap.innerHTML = `<p class="muted">Đang lấy danh sách file từ Sony…</p>`;
+    return;
+  }
+  if (p.state === "error") {
+    wrap.innerHTML = `<p style="color:var(--danger)"><b>❌ Lỗi:</b> ${p.error || "Không rõ"}</p>`;
+    return;
+  }
+  if (p.state === "cancelled") {
+    wrap.innerHTML = `<p class="muted">⏹️ Đã huỷ download.</p>`;
+    return;
+  }
+  if (p.state === "done") {
+    wrap.innerHTML = `
+      <p style="color:var(--success);font-size:16px"><b>✅ Tải xong!</b></p>
+      <p>ROM đã lưu vào:</p>
+      <p><code style="font-size:11px;word-break:break-all">${p.output_dir || "—"}</code></p>
+      <p class="muted">Bấm <b>Sang Flash</b> để vào wizard cài ROM (Day 3-4 sẽ làm phần đẹp).</p>
+    `;
+    $("#btn-rom-dl-cancel").hidden = true;
+    $("#btn-rom-dl-flash").hidden = false;
+    $("#btn-rom-dl-close").textContent = "Đóng";
+    return;
+  }
+  // downloading
+  const pct = p.percent || 0;
+  const speed = p.speed_bps ? _humanBytes(p.speed_bps) + "/s" : "—";
+  wrap.innerHTML = `
+    <div style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;font-size:13px">
+        <span>${p.current_file || "…"}</span>
+        <span><b>${pct.toFixed(1)}%</b></span>
+      </div>
+      <div class="progress-bar" style="margin-top:6px"><div class="progress-fill" style="width:${pct}%"></div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:13px">
+      <div><span class="muted">File:</span> ${p.files_done}/${p.files_total}</div>
+      <div><span class="muted">Tốc độ:</span> ${speed}</div>
+      <div><span class="muted">Đã tải:</span> ${_humanBytes(p.bytes_done)} / ${_humanBytes(p.bytes_total)}</div>
+      <div><span class="muted">ETA:</span> ${_humanDuration(p.eta_seconds)}</div>
+    </div>
+  `;
+}
+
+async function startRomDownload({ url, version, mode }) {
+  if (!url) {
+    toast("Không có URL download", "error");
+    return;
+  }
+  const label = `${STATE.romDeviceInfo?.model?.name || "ROM"}_${version}_${mode}`;
+  logEntry(`📥 Bắt đầu download ROM ${version} (${mode})`, "action");
+
+  // Open modal
+  $("#rom-dl-modal").hidden = false;
+  $("#rom-dl-modal-title").textContent = `Đang tải ROM ${version}`;
+  $("#btn-rom-dl-cancel").hidden = false;
+  $("#btn-rom-dl-flash").hidden = true;
+  $("#btn-rom-dl-close").textContent = "Đóng (chạy nền)";
+  _updateRomDownloadUI({ state: "list_files" });
+
+  // Start job
+  let job;
+  try {
+    job = await api("/api/rom/download/start", {
+      method: "POST",
+      body: JSON.stringify({ firmware_url: url, label }),
+    });
+  } catch (e) {
+    _updateRomDownloadUI({ state: "error", error: e.message });
+    return;
+  }
+  _romDownloadState.jobId = job.job_id;
+
+  // Subscribe SSE
+  const es = new EventSource(`/api/rom/download/stream?job_id=${encodeURIComponent(job.job_id)}`);
+  _romDownloadState.eventSource = es;
+  es.onmessage = (ev) => {
+    try {
+      const p = JSON.parse(ev.data);
+      _updateRomDownloadUI(p);
+      if (["done", "error", "cancelled"].includes(p.state)) {
+        es.close();
+        _romDownloadState.eventSource = null;
+        if (p.state === "done") logEntry(`✅ ROM download xong: ${p.output_dir}`, "success");
+        else if (p.state === "error") logEntry(`❌ ROM download lỗi: ${p.error}`, "error");
+        else logEntry(`⏹️ ROM download huỷ`, "warn");
+      }
+    } catch (e) {
+      console.warn("SSE parse:", e);
+    }
+  };
+  es.onerror = (e) => {
+    console.warn("SSE error", e);
+    // EventSource auto-reconnect; chỉ log nếu thread đã chết
+  };
+}
+
+async function cancelRomDownload() {
+  if (!_romDownloadState.jobId) return;
+  try {
+    await api(`/api/rom/download/cancel/${_romDownloadState.jobId}`, { method: "POST" });
+    toast("Đã yêu cầu huỷ — đợi vài giây", "warn");
+  } catch (e) {
+    toast("Lỗi huỷ: " + e.message, "error");
+  }
+}
+
+function closeRomDownloadModal() {
+  $("#rom-dl-modal").hidden = true;
+  // Không close EventSource — cho download tiếp tục background
 }
 
 async function refreshRomCache() {
@@ -1459,6 +1595,11 @@ $("#btn-rom-detect")?.addEventListener("click", () => {
 });
 $("#btn-rom-load-firmware")?.addEventListener("click", loadRomFirmwareList);
 $("#btn-rom-refresh-cache")?.addEventListener("click", refreshRomCache);
+$("#btn-rom-dl-cancel")?.addEventListener("click", cancelRomDownload);
+$("#btn-rom-dl-close")?.addEventListener("click", closeRomDownloadModal);
+$("#btn-rom-dl-flash")?.addEventListener("click", () => {
+  toast("Day 3-4 chưa làm — wizard flash sẽ implement sau", "warn");
+});
 
 // ---------- init ----------
 

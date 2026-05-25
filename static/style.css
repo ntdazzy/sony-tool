@@ -628,6 +628,9 @@ main {
 
 /* ----- Buttons ----- */
 
+/* Universal hidden — beats `display: inline-flex` from button classes */
+[hidden] { display: none !important; }
+
 button.btn-primary,
 button.btn-secondary,
 button.btn-danger,
