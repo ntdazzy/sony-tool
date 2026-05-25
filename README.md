@@ -1,460 +1,362 @@
-# Sony Debloat Tool
+# Sony Debloat
 
-Tool web local giúp **dọn app rác** và **tối ưu hiệu năng** cho điện thoại Sony Xperia 5 II (model nội địa Nhật **XQ-AS42**). Không cần root, không cần unlock bootloader, mọi thao tác đảo ngược được.
+Tool web local **dọn app rác** + **tối ưu hiệu năng** cho Sony Xperia. Không cần root, không cần unlock bootloader, mọi thao tác đảo ngược được.
 
----
-
-## 📋 Mục lục
-
-1. [Mô tả tổng quan](#mô-tả-tổng-quan)
-2. [Tính năng chính](#tính-năng-chính)
-3. [Yêu cầu hệ thống](#yêu-cầu-hệ-thống)
-4. [Cài đặt](#cài-đặt)
-5. [Sử dụng](#sử-dụng)
-6. [Cấu trúc thư mục](#cấu-trúc-thư-mục)
-7. [Bảo mật & an toàn](#bảo-mật--an-toàn)
-8. [Tuỳ biến](#tuỳ-biến)
-9. [API reference](#api-reference)
-10. [Troubleshooting](#troubleshooting)
-11. [FAQ](#faq)
+![Tests](https://img.shields.io/badge/tests-97%20passed-brightgreen) ![Python](https://img.shields.io/badge/python-3.10+-blue) ![Platform](https://img.shields.io/badge/platform-Mac%20%7C%20Windows-lightgrey)
 
 ---
 
-## Mô tả tổng quan
+## 🎯 Tool này làm gì?
 
-### Vấn đề
+**Vấn đề:** Sony Xperia (đặc biệt bản nội địa Nhật như XQ-AS42, SO-52A, SOG02, A002SO) đi kèm hàng trăm app rác/service ngầm:
+- 4 service Facebook chạy ngầm dù bạn không dùng FB
+- Sony News, Lifelog, Theme Engine, Smart Connect — chạy 24/7 tốn RAM/pin
+- App nhà mạng Nhật (G-Guide TV, iWnn IME, Docomo OSV) — vô dụng ở VN
+- Google apps preinstalled (Drive, Maps, YouTube, Gmail) — gỡ nếu không dùng
+- Partner apps (Amazon, Netflix activator, LinkedIn, LINE)
 
-Sony Xperia 5 II bản nội địa Nhật (XQ-AS42, SO-52A, SOG02, A002SO) đi kèm:
-- **Bloat từ Sony**: News Suite, Lifelog, 3D Creator, Theme Engine, Smart Connect, Help, Tips...
-- **Bloat từ nhà mạng JP**: G-Guide TV, iWnn IME, Docomo OSV...
-- **Bloat từ partner**: Facebook (4 service ngầm), Amazon, Netflix activator, LinkedIn, LINE...
-- **Bloat từ Google không cần**: Drive, Maps, YouTube, Gmail (nếu không dùng).
+**Sony khoá bootloader** cho thị trường Nhật → không cài ROM custom, không root. Cách duy nhất để dọn là dùng **ADB** với lệnh `pm disable-user` / `pm uninstall --user 0`.
 
-Sony **khoá bootloader** cho thị trường Nhật → không cài được ROM custom, không root được. Cách duy nhất để dọn là dùng **ADB** (`pm disable-user` / `pm uninstall --user 0`).
-
-### Giải pháp
-
-Tool web local chạy trên Mac/Windows, kết nối máy Sony qua USB (ADB):
-- **GUI rõ ràng** (tiếng Việt) thay vì gõ lệnh terminal
-- **Bloat list 165 package** đã curate cho XQ-AS42 JP
-- **Safe-list 76 package cốt lõi** chặn ở backend — không thể tắt nhầm app hệ thống
-- **1-click cleanup** với backup tự động + 11 tối ưu khách quan
-- **Khôi phục được** mọi thao tác (`pm enable` hoặc `pm install-existing`)
-
-### Kiến trúc
+**Giải pháp:** Tool web local chạy trên Mac/Windows, kết nối máy Sony qua USB:
+- 🧹 **Dọn 165+ bloat package** đã curate sẵn (4 mức từ Nhẹ → Tối đa)
+- ⚡ **23 preset tối ưu** (animation, RAM, pin, privacy)
+- 🛡️ **76 package cốt lõi** được bảo vệ — không cho tắt nhầm Play Store/GMS/Camera
+- 🚀 **1-click cleanup** với auto-backup
+- 📊 **Live state detection** — biết preset nào đã/chưa áp dụng
+- 📝 **Activity log** real-time hiển thị từng action
 
 ```
-┌─────────────┐         ┌──────────────┐         ┌────────┐         ┌─────────┐
-│   Browser   │ ◄──────►│  FastAPI     │ ◄──────►│  ADB   │ ◄──────►│  Sony   │
-│ (HTML/JS)   │  HTTP   │  (Python)    │ subproc │ binary │   USB   │  phone  │
-└─────────────┘         └──────────────┘         └────────┘         └─────────┘
-   localhost:8765         localhost:8765           PATH               cable
+┌─────────────┐   HTTP   ┌──────────────┐  subprocess  ┌────────┐   USB   ┌─────────┐
+│   Browser   │ ◄──────► │  FastAPI     │ ◄──────────► │  ADB   │ ◄─────► │  Sony   │
+│ (HTML/JS)   │ :8765    │  (Python)    │              │ binary │  cable  │  phone  │
+└─────────────┘          └──────────────┘              └────────┘         └─────────┘
 ```
 
-- **Frontend**: HTML + vanilla JS + CSS (no framework, không build step)
-- **Backend**: Python FastAPI, port 8765, chạy local
-- **Storage**: JSON files trong `data/`, backup trong `backups/`
-- **Communication**: ADB qua `subprocess.run()`
-
 ---
 
-## Tính năng chính
+## 📦 Cài đặt
 
-### 🚀 1-click cleanup
-Card nổi bật ở tab "Dọn sạch":
-1. Backup trạng thái hiện tại
-2. Tắt/Gỡ toàn bộ bloat tier "Tối đa" (~140 app)
-3. Áp dụng 11 tối ưu khách quan (animation, RAM, Wi-Fi scan, telemetry, ad tracking, AOD, network suggestions, Live Caption...)
-4. Đề nghị khởi động lại máy
-
-Toggle **Tắt** (an toàn) vs **🗑️ Gỡ hẳn** (sạch hơn).
-
-### 🎚️ 4 mức cleanup thủ công
-
-| Mức | Bloat tier | Mô tả |
-|---|---|---|
-| 🟢 Nhẹ | safe | Facebook, partner apps, JP-only, ad services |
-| 🔵 Vừa *(đề xuất)* | safe + recommended | Thêm Sony Music/Album/Email/Calendar, Lifelog, service ngầm |
-| 🟡 Mạnh | + aggressive | Thêm FOTA scheduler, call log backup, SMS push, service menu |
-| 🔴 Tối đa | + optional | Thêm Google apps không dùng (Drive, Maps, YouTube...) |
-
-### 📦 Quản lý từng app
-Tab "Tất cả app" — bảng filter + search:
-- Filter: User-installed / System / Disabled / Enabled / In bloat list / Critical
-- Search: gõ "facebook" / "sony" để lọc nhanh
-- Action: Tắt/Bật từng app hoặc bulk select
-
-### ⚡ 23 tối ưu hiệu năng
-Chia 5 nhóm:
-- **Tốc độ** (2): tắt animation, animation 50%
-- **Hiệu năng** (3): giới hạn 3 process, cached process limit, tắt haptic/sound chạm
-- **Pin** (10): tắt Wi-Fi scan, AOD, lift-to-wake, ringtone vibrate, screen timeout 30s, cảnh báo pin 25%, auto-rotate, adaptive brightness, Wi-Fi notif, doze aggressive
-- **Hiển thị** (3): force dark mode, Live Caption off, charging sound off
-- **Riêng tư** (5): tắt Google Backup, telemetry, ad tracking, network suggestions, captive portal check
-
-Mỗi preset có **Áp dụng** + **Khôi phục mặc định** riêng.
-
-### 💾 Backup & export
-- **Tạo backup mới**: lưu JSON danh sách app + trạng thái
-- **Xuất chi tiết**: dump đầy đủ (packages + services + getprop) để gửi dev phân tích
-
-### 🌓 Theme
-Light mode (mặc định) / Dark mode. Toggle 🌙/☀️ ở góc trên phải. Lưu vào browser localStorage.
-
----
-
-## Yêu cầu hệ thống
-
-### Mac / Linux
-- macOS 10.14+ hoặc Linux modern distro
-- **Python 3.10+** (cài qua `brew install python` hoặc dùng Python sẵn)
-- **Homebrew** (cho setup tự động cài ADB)
-- Cáp USB **data** (không phải cáp chỉ sạc)
-
-### Windows
-- Windows 10 / 11
-- **Python 3.10+** từ [python.org](https://www.python.org/downloads/) — **tick "Add Python to PATH"** khi cài
-- PowerShell (sẵn có)
-- Cáp USB **data**
-
-### Điện thoại Sony
-- Bản XQ-AS42 (cũng work với SO-52A, SOG02, A002SO và Xperia khác — bloat list có thể không trùng 100%)
-- Đã bật **Developer Options** + **USB Debugging**
-- Android 10+ (preset "giới hạn 3 process" + "cached process limit" cần Android 12+)
-
----
-
-## Cài đặt
-
-### Mac / Linux
+### Mac/Linux
 
 ```bash
-cd ~/Desktop/sony-tool
+git clone https://github.com/ntdazzy/sony-tool.git
+cd sony-tool
 chmod +x setup_adb.sh run.sh
-./setup_adb.sh
+./setup_adb.sh    # Cài ADB via Homebrew + Python venv
+./run.sh          # Mở http://localhost:8765
 ```
-
-Script sẽ:
-1. Kiểm tra Homebrew
-2. Cài `android-platform-tools` (chứa adb + fastboot)
-3. Tạo Python virtual env trong `.venv/`
-4. Cài FastAPI + uvicorn
 
 ### Windows
 
-Mở PowerShell trong folder `sony-tool`:
-
 ```powershell
-.\setup_adb.ps1
+git clone https://github.com/ntdazzy/sony-tool.git
+cd sony-tool
+.\setup_adb.ps1   # Tải platform-tools + Python venv
+.\run.ps1         # Mở http://localhost:8765
 ```
 
-Nếu lỗi "running scripts is disabled":
-```powershell
-Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
-```
-
-Script sẽ:
-1. Kiểm tra Python
-2. Tải `platform-tools-latest-windows.zip` từ Google (~10 MB)
-3. Giải nén ra `platform-tools/`
-4. Tạo Python venv + cài deps
+Yêu cầu Python 3.10+. ADB tự tải về thư mục `platform-tools/`.
 
 ### Bật USB Debugging trên máy Sony (1 lần)
 
-1. **Cài đặt → Giới thiệu điện thoại** → cuộn xuống cuối → chạm liên tục **7 lần** vào **Số hiệu bản dựng** (Build number)
-2. Quay lại **Cài đặt → Hệ thống → Tuỳ chọn nhà phát triển** → bật **Gỡ lỗi USB**
-3. Cắm cáp USB vào máy tính, kéo notification shade xuống → bấm "Charging this device via USB" → chọn **File transfer**
-4. Trên máy hiện popup **"Cho phép gỡ lỗi USB?"** → tick **Luôn cho phép** → **Cho phép**
+1. **Cài đặt → Giới thiệu điện thoại** → chạm **Số hiệu bản dựng** 7 lần
+2. **Cài đặt → Hệ thống → Tuỳ chọn nhà phát triển** → bật **Gỡ lỗi USB**
+3. Cắm cáp **data** (không phải cáp chỉ sạc), bấm **Cho phép** trên popup
+4. Trong tool, bấm **↻** để verify kết nối
 
 ---
 
-## Sử dụng
+## ✨ Tính năng
 
-### Khởi động tool
+### Tab Tổng quan
+- Stats dashboard: tổng app / đang chạy / đã tắt / **bloat còn chạy**
+- Thông tin máy: model, manufacturer, Android version, build, serial
+- Hướng dẫn bật USB Debugging
 
-**Mac/Linux**:
+### Tab Dọn sạch
+- **🚀 1-click cleanup**: backup → tắt/gỡ bloat → áp dụng tối ưu → đề nghị reboot
+- Toggle **Tắt** (an toàn) / **Gỡ hẳn** (sạch hơn)
+- **4 mức thủ công**:
+  | Mức | Bloat tier | Mô tả |
+  |---|---|---|
+  | 🟢 Nhẹ | safe | Facebook, partner apps, JP-only, ad services |
+  | 🔵 Vừa *(đề xuất)* | + recommended | + Sony Music/Album/Email/Calendar, Lifelog |
+  | 🟡 Mạnh | + aggressive | + FOTA scheduler, call log backup, SMS push |
+  | 🔴 Tối đa | + optional | + Google apps không dùng (Drive, Maps, YouTube) |
+- Preview list trước khi xử lý
+
+### Tab Tất cả app
+- Bảng tất cả 200+ package trên máy
+- Filter: user-installed / system / disabled / enabled / in bloat list / critical
+- Search theo tên
+- Action: tắt/bật từng app hoặc bulk
+- Tag màu: Đang bật / Đã tắt / Cốt lõi / tier
+
+### Tab Tối ưu
+- **23 preset** chia 5 nhóm: Tốc độ / Hiệu năng / Pin / Hiển thị / Riêng tư
+- **State detection**: badge "Đã áp dụng" / "Mặc định" / "1 phần" cho mỗi preset
+- Áp dụng / Khôi phục cho từng preset độc lập
+
+### Tab Backup
+- **Tạo backup**: lưu trạng thái app + enabled flag → JSON
+- **Xuất chi tiết**: packages + services + getprop + settings (global/system/secure) → gửi dev phân tích, cập nhật bloat list cho máy cụ thể của bạn
+
+### Activity log (cố định bottom)
+- Mỗi action ghi 1 dòng: timestamp + icon + message màu
+- Auto-scroll, collapse được
+- Tải log ra `.txt` để chia sẻ debug
+
+### Theme
+- Light/dark mode toggle
+- Lưu preference vào localStorage
+
+---
+
+## 🛡️ An toàn
+
+**3 lớp bảo vệ:**
+
+1. **Safe-list backend (76 package)** chặn cứng: Play Store, GMS, GSF, WebView, Camera Sony, SystemUI, Settings, Phone, Dialer, providers, NetworkStack, Cellbroadcast, UWB, role manager... Request disable/uninstall package critical → HTTP 400 ngay.
+
+2. **"Tắt" mặc định** (`pm disable-user`) thay vì gỡ thật. App vẫn còn APK trong `/system`, bật lại 1 lệnh.
+
+3. **Auto-backup** trước mỗi đợt cleanup → file JSON ghi trạng thái cũ.
+
+**Phục hồi khẩn cấp** nếu lỡ tắt nhầm:
 ```bash
-./run.sh
-```
-
-**Windows**:
-```powershell
-.\run.ps1
-```
-
-Trình duyệt tự mở `http://localhost:8765`.
-
-### Quy trình đề xuất (lần đầu)
-
-1. **Tab Tổng quan** → bấm **↻** ở góc trên phải → xác nhận đã thấy thông tin máy
-2. **Tab Backup** → bấm **💾 Tạo backup mới**
-3. **Tab Backup** → bấm **📤 Xuất chi tiết** → gửi file cho dev nếu muốn bloat list khớp 100% máy bạn
-4. **Tab Dọn sạch** → bấm **🚀 Bắt đầu — máy sạch trong 1 phút** (mặc định Gỡ hẳn ở mức Tối đa)
-5. Đợi 30-60s, xác nhận **🔄 Khởi động lại máy**
-6. Sau khi máy bật lại, dùng 1-2 ngày
-7. Nếu thiếu app nào → vào CH Play cài lại
-8. Nếu thiếu chức năng nào → **Tab Tất cả app** → lọc **Đã tắt** → tìm + bật lại
-
-### Quy trình thủ công (kiểm soát hơn)
-
-1. **Tab Dọn sạch** → cuộn xuống "Hoặc chọn thủ công theo mức"
-2. Chọn tier mong muốn (Nhẹ/Vừa/Mạnh/Tối đa)
-3. Bấm **Xem danh sách ▾** để review trước
-4. Bấm **🧹 Tắt tất cả đã chọn**
-5. Vào **Tab Tối ưu** → áp dụng từng preset bạn muốn
-
----
-
-## Cấu trúc thư mục
-
-```
-sony-tool/
-├── README.md                    # File này
-├── requirements.txt             # Python deps (fastapi, uvicorn)
-├── app.py                       # FastAPI server (300 dòng)
-├── adb_wrapper.py               # Wrapper subprocess gọi adb
-│
-├── data/
-│   ├── safe_list.json           # 76 package CẤM tắt (Play Store, GMS, Camera...)
-│   ├── bloat_jp.json            # 165 package bloat XQ-AS42 JP (11 nhóm, 4 tier)
-│   └── optimize_presets.json    # 23 preset tinh chỉnh
-│
-├── static/                      # Frontend (vanilla, no build)
-│   ├── index.html               # Single page app
-│   ├── style.css                # CSS variables, dark + light theme
-│   └── app.js                   # Logic (tabs, API calls, 1-click, modal)
-│
-├── scripts/
-│   ├── export_packages.sh       # Dump full package list (Mac/Linux)
-│   └── export_packages.bat      # Tương tự (Windows)
-│
-├── backups/                     # Auto-created, lưu file backup-*.json + export-*.json
-├── platform-tools/              # ADB binary (Windows tải về đây)
-├── .venv/                       # Python virtual env
-│
-├── setup_adb.sh                 # Setup Mac/Linux (Homebrew + venv)
-├── setup_adb.ps1                # Setup Windows (download platform-tools + venv)
-├── run.sh                       # Khởi động uvicorn (Mac/Linux)
-└── run.ps1                      # Khởi động uvicorn (Windows)
-```
-
----
-
-## Bảo mật & an toàn
-
-### 3 lớp bảo vệ
-
-**1. Safe-list backend chặn cứng**
-
-File `data/safe_list.json` liệt kê 76 package **không thể tắt**. Backend kiểm tra mọi POST `/api/packages/disable` và `/api/packages/uninstall` — nếu request chứa bất kỳ package nào trong safe-list, server trả 400 ngay, không gửi lệnh ADB nào.
-
-Các package được bảo vệ:
-- **CH Play & Google core**: `com.android.vending`, `com.google.android.gms`, `com.google.android.gsf`, `com.google.android.webview`, `com.google.android.tts`
-- **Cellular & emergency**: `com.android.phone`, `com.android.dialer`, `com.android.cellbroadcastservice`, `com.android.cellbroadcastreceiver`
-- **Camera**: `com.sonymobile.PhotoPro`, `com.sonyericsson.android.camera`, `com.sonymobile.cameracommon`
-- **Providers**: media, contacts, telephony, settings, calendar, downloads
-- **System UI**: `com.android.systemui`, `com.android.settings`
-- **Network**: NetworkStack, captiveportallogin, Bluetooth, NFC, UWB (Android 12+)
-- **Permission**: permissioncontroller, role manager, intentresolver
-- **Qualcomm modem**: callfeaturessetting, qms.service, telephonyservice, ims
-
-**2. "Tắt" thay vì "Gỡ" làm mặc định**
-
-`pm disable-user --user 0` chỉ marker app là disabled, **giữ nguyên file APK trong `/system/`**. Bật lại bằng 1 lệnh `pm enable`. Khác với `pm uninstall --user 0` (cũng giữ APK nhưng xoá data) và `rm /system/app/Foo.apk` (xoá thật, cần root).
-
-User có thể chọn "Gỡ hẳn" (uninstall --user 0) nếu muốn sạch hơn — vẫn khôi phục được bằng `cmd package install-existing`.
-
-**3. Backup tự động trước mỗi cleanup**
-
-1-click flow tự backup trước khi xử lý gì. File `backup-YYYYMMDD-HHMMSS.json` lưu danh sách app + trạng thái enabled. Restore manually bằng cách so sánh + bật lại các app cần.
-
-### Phục hồi khẩn cấp
-
-Nếu lỡ tắt nhầm gây UI lạ:
-
-**Cách 1 — qua tool**:
-- Tab "Tất cả app" → filter "Đã tắt" → tick → "Bật đã chọn"
-
-**Cách 2 — terminal**:
-```bash
-# Bật lại 1 app
-adb shell pm enable com.ten.goi.app
-
-# Bật lại TOÀN BỘ app đang disabled
+# Bật lại toàn bộ app đang disabled
 adb shell "pm list packages -d" | sed 's/package://' | xargs -n1 -I{} adb shell pm enable {}
 ```
 
-**Cách 3 — factory reset**:
-- Cài đặt → Hệ thống → Đặt lại → Đặt lại thiết bị (mất data nhưng tất cả app quay lại)
+Hoặc trong tool: tab "Tất cả app" → lọc "Đã tắt" → bật lại.
 
 ---
 
-## Tuỳ biến
+## 📱 Hỗ trợ multi-model
 
-### Thêm app vào bloat list
+Curated trên **XQ-AS42** nhưng hoạt động với mọi Sony Xperia:
 
-Sửa `data/bloat_jp.json`, thêm vào category phù hợp:
+- **~80% bloat list là universal Sony** (`com.sonymobile.*`, `com.sonyericsson.*`, Facebook system apps) — chạy được trên Xperia 1/5/10 series, Pro series
+- Tool có **filter "chỉ hiện app đang có trên máy"** → tự ẩn package không tồn tại
+- **Settings tweaks dùng AOSP keys** → chạy được trên mọi Android (không Sony-specific)
+- Verified: XQ-AS42, SO-52A
 
-```json
-{
-  "id": "com.ten.goi.app",
-  "label": "Tên dễ hiểu",
-  "tier": "safe"
-}
+Nếu máy bạn có bloat lạ không trong list → **Backup → Xuất chi tiết → gửi file cho dev**, tôi cập nhật list, bạn `git pull`.
+
+---
+
+## 🔧 Cơ chế hoạt động
+
+### Layer 1 — Tắt app rác qua Package Manager
+
+```bash
+# Disable (recommended): app vẫn còn, ẩn icon, không chạy ngầm. Bật lại 1 lệnh.
+adb shell pm disable-user --user 0 com.facebook.appmanager
+
+# Uninstall for user 0: gỡ cho user hiện tại, APK vẫn trong /system.
+# Khôi phục: cmd package install-existing <pkg>
+adb shell pm uninstall --user 0 com.facebook.appmanager
 ```
 
-Tiers:
-- `safe` — không ảnh hưởng tính năng nào
-- `recommended` — bạn không dùng, nên tắt cho máy nhẹ
-- `aggressive` — chỉ tắt nếu hiểu rõ, có thể mất vài chức năng phụ
-- `optional` — tuỳ nhu cầu (vd Google apps)
+→ Bớt 30-40% RAM dùng ngay từ boot, bớt CPU/pin cho background services.
 
-Reload tool (Cmd+R / Ctrl+R) để áp dụng.
+### Layer 2 — Tinh chỉnh system qua `settings` + `device_config`
 
-### Thêm preset tối ưu
+```bash
+# Animation off → GPU không vẽ transitions → cảm giác tap-instant
+adb shell settings put global window_animation_scale 0
+adb shell settings put global transition_animation_scale 0
+adb shell settings put global animator_duration_scale 0
 
-Sửa `data/optimize_presets.json`:
+# Giới hạn background processes → ít app cached → RAM trống
+adb shell device_config put activity_manager max_phantom_processes 3
 
-```json
-{
-  "id": "my_preset_id",
-  "icon": "🔧",
-  "category": "Tốc độ",
-  "title": "Tên hiển thị",
-  "description": "Mô tả ngắn",
-  "warning": "Cảnh báo (optional)",
-  "apply": [
-    {"namespace": "global", "key": "some_setting", "value": "0"},
-    {"shell": "any adb shell command"}
-  ],
-  "revert": [
-    {"namespace": "global", "key": "some_setting", "value": "1"}
-  ]
-}
+# Wi-Fi không scan ngầm → pin standby trâu hơn
+adb shell settings put global wifi_scan_always_enabled 0
+
+# Tắt Always-On Display → màn hình tắt hoàn toàn lúc idle
+adb shell settings put secure doze_always_on 0
 ```
 
-### Bảo vệ thêm package
+→ ~20% pin tiết kiệm standby + snappier feel rõ rệt.
 
-Thêm vào `data/safe_list.json`:
+### Tool gói tất cả vào 1-click
 
-```json
-{
-  "critical": [
-    "com.android.systemui",
-    "com.example.never.disable.this"
-  ]
-}
+```
+1. POST /api/backup           → backups/backup-YYYYMMDD.json
+2. POST /api/packages/disable  → 140 lệnh pm disable-user --user 0
+3. POST /api/optimize/apply    → 11 preset (settings put + device_config put)
+4. POST /api/reboot            → adb shell reboot
 ```
 
 ---
 
-## API reference
+## 📂 Cấu trúc thư mục
 
-Tất cả endpoint chạy trên `http://localhost:8765`. Không có auth (chỉ chạy local).
+```
+sony-tool/
+├── README.md                       # File này
+├── requirements.txt                # fastapi, uvicorn, pytest, httpx
+├── app.py                          # FastAPI server (~400 dòng)
+├── adb_wrapper.py                  # Wrapper subprocess gọi adb
+├── setup_adb.sh / setup_adb.ps1    # Setup Mac / Windows
+├── run.sh / run.ps1                # Khởi động uvicorn
+│
+├── data/
+│   ├── safe_list.json              # 76 package CẤM tắt
+│   ├── bloat_jp.json               # 165 bloat package (11 nhóm, 4 tier)
+│   └── optimize_presets.json       # 23 preset tinh chỉnh
+│
+├── static/                         # Frontend (vanilla, no build)
+│   ├── index.html                  # Single page app
+│   ├── style.css                   # CSS variables, light + dark theme
+│   └── app.js                      # Logic: tabs, API, 1-click, modal, log
+│
+├── scripts/
+│   ├── export_packages.sh          # Dump packages + settings (Mac/Linux)
+│   └── export_packages.bat         # Tương tự (Windows)
+│
+├── tests/                          # pytest, 97 tests
+│   ├── test_data_integrity.py      # Validate JSON, no conflicts
+│   ├── test_adb_wrapper.py         # Parse helpers, subprocess mock
+│   ├── test_api.py                 # Endpoints + safe-list enforcement
+│   ├── test_optimize_state.py      # State detection logic
+│   ├── test_frontend_consistency.py # Cross-check JS ↔ HTML ↔ data
+│   └── test_windows_compat.py      # Path, encoding, ASCII-only .ps1
+│
+├── backups/                        # Auto-created, JSON backup files
+└── platform-tools/                 # ADB binary (Windows tải về đây)
+```
+
+---
+
+## 🚀 Roadmap — Tính năng có thể thêm
+
+Theo độ hữu ích đề xuất:
+
+### 1. **App size + storage analysis**
+Bên cạnh tên app, hiện size APK + cache data (`dumpsys diskstats`). Sau cleanup hiển thị "Tiết kiệm 1.2 GB". Cho user thấy benefit cụ thể.
+
+### 2. **Battery hog detector**
+Đọc `dumpsys batterystats` + `dumpsys procstats` → list top 10 app tốn pin 24h qua. Suggest tắt những cái user không quan tâm.
+
+### 3. **Restore point (full snapshot)**
+Snapshot toàn bộ state (apps enabled + settings values) như macOS Time Machine. Restore 1-click nếu sau cleanup máy lạ.
+
+### 4. **Diff view giữa các backup**
+So sánh 2 backup → biết giữa 2 thời điểm, máy đã đổi gì (app mới install, settings changed). Useful sau Android update.
+
+### 5. **Recommendation engine**
+Phân tích máy: "Máy bạn có 89 bloat, RAM 6GB, ít dùng đa nhiệm → đề xuất mức Vừa + tắt animation + giới hạn 3 process". Personalized cho từng máy.
+
+### 6. **Permission audit**
+List app nào có permission nhạy cảm (LOCATION_ALWAYS, CAMERA, MICROPHONE, READ_SMS). Giúp user quyết định gỡ.
+
+### 7. **Network usage analyzer**
+Đọc `cat /proc/net/xt_qtaguid/stats` → app nào dùng nhiều data ngầm. Detect tracker / spyware.
+
+### 8. **Multi-device support**
+Nhiều máy cắm cùng lúc → dropdown chọn máy active. Manage 2-3 Xperia phụ cùng lúc.
+
+### 9. **CLI mode**
+`python cli.py cleanup --tier nuclear --serial ABC123 --auto-confirm` cho automation / scripting. Useful cho IT manage fleet.
+
+### 10. **Custom bloat lists cho hãng khác**
+`bloat_samsung.json`, `bloat_xiaomi.json`, `bloat_oppo.json`. Mở rộng tool support beyond Sony. Cộng đồng đóng góp via PR.
+
+### 11. **Auto-update bloat list từ GitHub**
+Mỗi tuần tool tự `git pull` data files → user luôn có list mới nhất.
+
+### 12. **A/B benchmark before/after**
+Đo boot time, free RAM, battery drain rate trước + sau cleanup. Show metrics rõ ràng "trước 4 phút boot, sau 2.5 phút".
+
+### 13. **Live screen mirror (scrcpy integration)**
+Hiện màn hình máy trong tool qua scrcpy. Vừa setup vừa nhìn máy không cần nhìn xuống bàn.
+
+### 14. **Notification audit**
+List app nào gửi notification nhiều (đọc `dumpsys notification`). Suggest disable.
+
+### 15. **Shareable presets**
+Export config "Setup máy phụ" / "Setup gaming" thành JSON → user khác import. Build community of bloat configs.
+
+---
+
+## 🧪 Tests
+
+```bash
+./.venv/bin/python -m pytest tests/ -v
+```
+
+- 97 tests across 6 files
+- ~0.4s total runtime
+- Cover: JSON integrity, ADB wrapper logic, API endpoints, safe-list enforcement, state detection, frontend-backend consistency, Windows compat
+
+---
+
+## 📡 API reference
+
+Tất cả endpoint chạy local `http://localhost:8765`. Không auth.
 
 | Method | Path | Mô tả |
 |---|---|---|
-| GET | `/` | Trang chủ HTML |
-| GET | `/api/status` | Trạng thái ADB + device info |
-| GET | `/api/packages?serial=<s>` | Liệt kê tất cả package + tier + flag critical |
-| GET | `/api/bloat-list` | Curated bloat list từ `data/bloat_jp.json` |
-| GET | `/api/optimize/presets` | Danh sách 23 preset |
-| POST | `/api/packages/disable` | Body: `{packages: [...], serial?}` |
-| POST | `/api/packages/enable` | Body: `{packages: [...], serial?}` |
-| POST | `/api/packages/uninstall` | `pm uninstall --user 0`, body như disable |
-| POST | `/api/packages/restore` | `cmd package install-existing`, body như disable |
-| POST | `/api/optimize/apply` | Body: `{preset_id, serial?}` |
-| POST | `/api/optimize/revert` | Body: `{preset_id, serial?}` |
-| POST | `/api/settings/write` | Body: `{namespace, key, value, serial?}` |
-| GET | `/api/backup?serial=<s>` | Tạo file backup mới, trả `{file, path, count}` |
-| GET | `/api/export-full?serial=<s>` | Dump packages + services + getprop |
-| GET | `/api/backups` | List file backup đã tạo |
-| POST | `/api/reboot?serial=<s>` | Reboot máy qua ADB |
+| GET | `/` | Trang HTML chính |
+| GET | `/api/status` | ADB + device info |
+| GET | `/api/packages?serial=` | Danh sách app + stats + tier flags |
+| GET | `/api/bloat-list` | Curated bloat catalog |
+| GET | `/api/optimize/presets` | Danh sách preset tối ưu |
+| GET | `/api/optimize/state?serial=` | **Current value của mỗi preset's setting** |
+| POST | `/api/packages/disable` | `{packages: [...], serial?}` |
+| POST | `/api/packages/enable` | tương tự, không check safe-list |
+| POST | `/api/packages/uninstall` | `pm uninstall --user 0` |
+| POST | `/api/packages/restore` | `cmd package install-existing` |
+| POST | `/api/optimize/apply` | `{preset_id, serial?}` |
+| POST | `/api/optimize/revert` | tương tự |
+| POST | `/api/settings/write` | `{namespace, key, value, serial?}` |
+| GET | `/api/backup?serial=` | Tạo backup JSON |
+| GET | `/api/export-full?serial=` | Dump packages + services + settings + getprop |
+| GET | `/api/backups` | List backup files |
+| POST | `/api/reboot?serial=` | Reboot máy |
 
-Endpoint disable/uninstall **luôn check safe-list** và refuse với HTTP 400 nếu chạm package critical.
-
----
-
-## Troubleshooting
-
-### `adb devices` không thấy máy
-
-Theo thứ tự khả năng:
-
-**1. Cáp chỉ sạc**
-- Cáp rẻ tiền / kèm cục sạc 5W / kèm tai nghe thường chỉ truyền điện
-- Đổi cáp khác (loại data, có chữ "data" hoặc tested với máy tính)
-
-**2. USB mode sai**
-- Vuốt notification shade trên máy → có thông báo "Charging via USB" → bấm → chọn **File transfer** (không phải Charging only)
-
-**3. USB Debugging chưa bật**
-- Cài đặt → Hệ thống → Tuỳ chọn nhà phát triển → "Gỡ lỗi USB" phải ON
-
-**4. Authorization cũ còn lưu**
-- Trên máy: Tuỳ chọn nhà phát triển → bấm "Thu hồi quyền gỡ lỗi USB"
-- Rút cáp, cắm lại
-- Trên Mac: `adb kill-server && adb start-server`
-- Popup sẽ hiện lại trên máy
-
-**5. Hackintosh USB issue**
-- Hackintosh hay có vấn đề với USB injection / kext mapping
-- Thử port USB 2.0 thay vì USB 3.0 (USB 2.0 ổn hơn cho ADB trên Hackintosh)
-- Hoặc chạy tool trên máy Windows / Mac thật
-
-**6. WSL2 / Docker**
-- Tool chạy native, không cần WSL hay Docker
-- Nếu Python trong WSL → adb từ Windows không kết nối được tới WSL — chạy native Windows
-
-### Tool chạy nhưng không kết nối server
-
-- Check port 8765: `lsof -i:8765` (Mac) hoặc `netstat -an | findstr 8765` (Windows)
-- Nếu bị chiếm: kill process khác hoặc đổi port trong `run.sh` / `run.ps1`
-
-### Preset không có hiệu ứng
-
-- Một số preset (AOD off, Lift-to-Wake off) dùng key AOSP gốc. Sony Xperia có thể override → vào Cài đặt tắt thủ công
-- Preset `background_limit_3` và `cached_processes_limit` cần **Android 12+**
-- Sony STAMINA mode có thể conflict với "Doze aggressive"
-
-### App tắt rồi mà vẫn thấy chạy
-
-- Reboot máy. Vài app cache phải reboot mới biến mất
-- Check lại bằng `adb shell pm list packages -d` — app phải nằm trong list disabled
+Endpoint disable/uninstall **luôn check safe-list** và refuse HTTP 400 nếu chạm package critical.
 
 ---
 
-## FAQ
+## ❓ FAQ rút gọn
 
-**Q: Tool có gửi data của tôi đi đâu không?**  
-A: Không. Server chạy 100% local trên máy bạn (`127.0.0.1:8765`), không có gọi internet nào. Source code mở, đọc được.
+**Q: Có an toàn không?**  
+A: Có. 76 package critical chặn cứng ở backend. "Tắt" mặc định, có thể bật lại 1 click. Auto-backup trước mỗi đợt cleanup.
 
-**Q: Bootloader có unlock được không?**  
-A: KHÔNG. Sony chính sách không cấp mã unlock cho thị trường Nhật (XQ-AS42, SO-52A, SOG02, A002SO). Snapdragon 865 secure boot — không có exploit công khai cho Android 10+.
+**Q: Tool gửi data của tôi đi đâu không?**  
+A: Không. Server chạy 100% local trên máy bạn, không gọi internet. Source code mở.
+
+**Q: Bootloader unlock được không?**  
+A: KHÔNG cho XQ-AS42/SO-52A — Sony policy thị trường Nhật. Không có exploit công khai.
 
 **Q: Đổi font hệ thống được không?**  
-A: KHÔNG, không có root. Workaround: cài Nova/Niagara Launcher (đổi font tên app), đổi cỡ chữ trong Cài đặt → Hiển thị.
+A: KHÔNG nếu không root. Workaround: Nova Launcher đổi font tên app, đổi cỡ chữ trong Settings.
 
-**Q: "Tắt" và "Gỡ" khác nhau thế nào?**  
-A: 
-- **Tắt** (`pm disable-user`): app ẩn icon, không chạy, dữ liệu vẫn còn. Bật lại 1 lệnh.
-- **Gỡ hẳn** (`pm uninstall --user 0`): app gỡ cho user 0, dữ liệu xoá, APK vẫn trong `/system`. Khôi phục bằng `cmd package install-existing`.
-
-**Q: Sau factory reset, app đã gỡ có quay lại không?**  
-A: Có. Cả "Tắt" và "Gỡ --user 0" đều không xoá APK trong system. Factory reset = reset user data → app quay lại.
-
-**Q: Có khác gì với mấy app debloat trên Play Store?**  
-A: App trên Play Store **không thể** disable system app (Android security). Cần ADB từ PC. Tool này là wrapper GUI cho ADB.
-
-**Q: Chạy được trên Android không phải Sony không?**  
-A: Backend chạy được (vẫn liệt kê + disable package). Bloat list trong `data/bloat_jp.json` là Sony-specific — sẽ không khớp với Samsung/Xiaomi. Cần sửa list cho hãng khác.
+**Q: Factory reset thì app gỡ có quay lại?**  
+A: Có. Cả "Tắt" và "Gỡ --user 0" không xoá APK trong system. Factory reset = reset user data → app quay lại như mới.
 
 ---
 
-## License
+## 🛠️ Tech stack
+
+- **Backend**: Python 3.10+, FastAPI, uvicorn
+- **Frontend**: Vanilla JS, HTML, CSS (no build step, no framework)
+- **Storage**: JSON files (data/*.json), filesystem (backups/)
+- **Bridge**: Android Debug Bridge (adb)
+- **Test**: pytest + httpx (FastAPI TestClient)
+- **Cross-platform**: Mac/Linux (bash) + Windows (PowerShell)
+
+Không có database, không có background services, không có cloud. Toàn bộ stack ~50MB sau khi cài.
+
+---
+
+## 📝 License
 
 Cá nhân sử dụng. Code mở, không bảo hành.
 
-## Acknowledgements
+---
 
-Cảm ơn Sony vì khoá bootloader 😉
+*Tool này không liên quan đến Sony Corporation. Sử dụng tự chịu trách nhiệm. Tác giả không chịu trách nhiệm nếu máy bạn lỡ tắt nhầm app quan trọng (mặc dù tool đã chặn rất nhiều).*
