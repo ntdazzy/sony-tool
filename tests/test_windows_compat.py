@@ -108,6 +108,32 @@ def test_setup_uses_python_m_pip_not_pip_exe():
     assert "--disable-pip-version-check" in src
 
 
+def test_setup_rejects_microsoft_store_python_alias():
+    """Win 10/11 default có python.exe stub trong WindowsApps trỏ tới Store.
+    Get-Command python tưởng là Python thật → script gọi --version thì alias
+    print error 'Python was not found' → user confused, không setup được.
+    Fix: skip command nếu path nằm trong WindowsApps + verify output match
+    pattern 'Python X.Y'."""
+    src = _read(ROOT / "setup_adb.ps1")
+    # Phải có check WindowsApps để skip alias
+    assert "WindowsApps" in src, (
+        "setup_adb.ps1 phải skip command có path trong \\WindowsApps\\ "
+        "(Microsoft Store alias) — nếu không user chưa cài Python thật sẽ fail"
+    )
+    # Phải verify output `--version` thật, không trust mỗi Get-Command
+    assert "Python \\d+\\.\\d+" in src or 'Python \\d' in src, (
+        "setup_adb.ps1 phải verify output --version match pattern 'Python X.Y' "
+        "trước khi chấp nhận"
+    )
+    # py.exe (Python Launcher) phải được thử TRƯỚC python.exe vì nó không bị aliased
+    py_idx = src.find('"py"')
+    python_idx = src.find('"python"')
+    assert py_idx != -1 and python_idx != -1, "Phải thử cả py và python"
+    assert py_idx < python_idx, (
+        "Phải thử py.exe TRƯỚC python.exe (py.exe không bị Microsoft Store aliased)"
+    )
+
+
 def test_ps1_files_are_ascii_only():
     """PowerShell 5.1 (Win10/11 default) đọc .ps1 không-BOM sai khi có Unicode →
     'string is missing the terminator' error. Bắt buộc ASCII thuần."""

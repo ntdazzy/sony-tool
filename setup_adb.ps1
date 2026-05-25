@@ -9,21 +9,38 @@ Set-Location $scriptDir
 Write-Host "=== Sony Debloat Tool - Setup (Windows) ===" -ForegroundColor Cyan
 Write-Host ""
 
-# 1. Check Python
+# 1. Check Python - skip Microsoft Store alias
+# Win 10/11 default has python.exe as a Store stub at WindowsApps. Get-Command
+# returns success even though running it prints "Python was not found".
+# Try py.exe (Python Launcher) FIRST since it is never aliased.
 $pythonCmd = $null
-foreach ($cmd in @("python", "py")) {
-    if (Get-Command $cmd -ErrorAction SilentlyContinue) {
-        $pythonCmd = $cmd
-        break
-    }
+foreach ($cmd in @("py", "python", "python3")) {
+    $found = Get-Command $cmd -ErrorAction SilentlyContinue
+    if (-not $found) { continue }
+    # Skip Microsoft Store alias (path under WindowsApps)
+    if ($found.Source -match "\\WindowsApps\\") { continue }
+    # Verify it actually runs and prints a real version
+    try {
+        $verOut = & $cmd --version 2>&1 | Out-String
+        if ($verOut -match "Python \d+\.\d+") {
+            $pythonCmd = $cmd
+            $pyVersion = ($verOut.Trim() -split "`n")[0]
+            break
+        }
+    } catch {}
 }
 if (-not $pythonCmd) {
-    Write-Host "[ERROR] Python not installed." -ForegroundColor Red
-    Write-Host "        Download: https://www.python.org/downloads/"
-    Write-Host "        IMPORTANT: tick 'Add Python to PATH' when installing."
+    Write-Host "[ERROR] Python not installed (or only Microsoft Store alias detected)." -ForegroundColor Red
+    Write-Host ""
+    Write-Host "  Cach fix:"
+    Write-Host "  1. Tai Python 3.10+ tu: https://www.python.org/downloads/"
+    Write-Host "  2. Khi cai - TICK 'Add Python to PATH'"
+    Write-Host "  3. (Neu van loi) Tat Microsoft Store alias:"
+    Write-Host "     Settings -> Apps -> Advanced app settings -> App execution aliases"
+    Write-Host "     -> tat python.exe va python3.exe"
+    Write-Host "  4. Mo PowerShell moi roi chay lai .\setup_adb.ps1"
     exit 1
 }
-$pyVersion = & $pythonCmd --version 2>&1
 Write-Host "[OK] Python: $pyVersion" -ForegroundColor Green
 
 # 2. Download platform-tools if missing
